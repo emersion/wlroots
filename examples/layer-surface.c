@@ -42,7 +42,7 @@ EGLConfig egl_conf;
 EGLSurface egl_surface;
 EGLContext egl_context;
 
-enum surface_layers_layer layer_index = SURFACE_LAYERS_LAYER_OVERLAY;
+enum surface_layers_layer layer_index = SURFACE_LAYERS_LAYER_INPUT;
 uint32_t anchor = LAYER_SURFACE_ANCHOR_NONE;
 uint32_t input_types = LAYER_SURFACE_INPUT_DEVICE_NONE;
 uint32_t exclusive_types = LAYER_SURFACE_INPUT_DEVICE_NONE;
@@ -382,8 +382,10 @@ enum surface_layers_layer parse_layer(const char *s) {
 		return SURFACE_LAYERS_LAYER_BOTTOM;
 	} else if (strcmp(s, "top") == 0) {
 		return SURFACE_LAYERS_LAYER_TOP;
-	} else if (strcmp(s, "overlay") == 0) {
-		return SURFACE_LAYERS_LAYER_OVERLAY;
+	} else if (strcmp(s, "locking") == 0) {
+		return SURFACE_LAYERS_LAYER_LOCKING;
+	} else if (strcmp(s, "input") == 0) {
+		return SURFACE_LAYERS_LAYER_INPUT;
 	}
 	fprintf(stderr, "Unknown layer name: %s\n", s);
 	exit(EXIT_FAILURE);

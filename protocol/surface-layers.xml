@@ -67,12 +67,35 @@
         Fullscreen shell surfaces are typically rendered at the top layer.
         Multiple surfaces can share a single layer, and ordering within a
         single layer is undefined.
+
+        The background layer should be used by background applications. They
+        should generally anchor to all 4 sides and spawn the entire output.
+
+        The bottom layer will be shared by panels and interactive desktop
+        elements.
+        The panel would request an exclusive zone, while the desktop uses a
+        non-exclusive surface anchored to all 4 sides, leaving it to the
+        compositor to ensure they don't overlap.
+        Interactive desktop elements are e.g. quick links to open the file
+        manager on mount points, or xdg .desktop file links.
+
+        The top layer can be used to implement a quake-like terminal application.
+
+        The locking layer is supposed to support screen locking. It is placed
+        above all normal layers on purpose. It should be considerd above
+        fullscreened shell applications and is supposed to break grabs.
+
+        The input layer is intended for on-screen keyboards. On touch-only
+        devices those may have to be displayed above the locker to provide
+        password based authentication.
+        This is also explicitly above fullscrened applications.
       </description>
 
       <entry name="background" value="0"/>
       <entry name="bottom" value="1"/>
       <entry name="top" value="2"/>
-      <entry name="overlay" value="3"/>
+      <entry name="locking" value="3"/>
+      <entry name="input" value="4"/>
     </enum>
   </interface>
 
@@ -174,11 +197,20 @@
       <description summary="types of input devices">
         These flags are a bitfield and are used by set_interactive to specify
         what sorts of input the surface should interact with.
+
+        If `all` is set, the semantics change to exclude the given input devices.
+        This is roughly the same as inverting the bits in the argument,
+        but allows to match device types not yet mentioned in the protocol
+        specification the client uses, but supported by the compositor.
+
+        This allows for screen locking applications to catch all devices,
+        without a need to update for any new device type.
       </description>
       <entry name="none" value="0"/>
-      <entry name="pointer" value="1"/>
-      <entry name="keyboard" value="2"/>
-      <entry name="touch" value="4"/>
+      <entry name="all" value="1"/>
+      <entry name="pointer" value="2"/>
+      <entry name="keyboard" value="4"/>
+      <entry name="touch" value="8"/>
     </enum>
 
     <enum name="anchor" bitfield="true">
