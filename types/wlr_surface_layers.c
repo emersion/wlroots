@@ -201,7 +201,7 @@ static void surface_layers_get_layer_surface(struct wl_client *client,
 	struct wlr_surface *surface = wl_resource_get_user_data(surface_resource);
 	struct wlr_output *output = wl_resource_get_user_data(output_resource);
 
-	if (layer > SURFACE_LAYERS_LAYER_OVERLAY) {
+	if (layer > SURFACE_LAYERS_LAYER_INPUT) {
 		wl_resource_post_error(resource, SURFACE_LAYERS_ERROR_INVALID_LAYER,
 			"Unknown layer");
 		return;

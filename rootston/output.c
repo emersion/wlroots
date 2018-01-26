@@ -179,7 +179,7 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
 
 	if (remaining_layer_surfaces != NULL) {
 		render_layer_surfaces(remaining_layer_surfaces, desktop, wlr_output,
-			&now, SURFACE_LAYERS_LAYER_OVERLAY);
+			&now, SURFACE_LAYERS_LAYER_INPUT);
 	}
 
 	wlr_renderer_end(server->renderer);
