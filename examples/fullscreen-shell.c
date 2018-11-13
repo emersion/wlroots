@@ -209,7 +209,8 @@ int main(int argc, char *argv[]) {
 	wlr_renderer_init_wl_display(server.renderer, server.wl_display);
 
 	wlr_compositor_create(server.wl_display, server.renderer);
-	wlr_linux_dmabuf_v1_create(server.wl_display, server.renderer);
+	wlr_linux_dmabuf_v1_create(server.wl_display,
+		server.backend, server.renderer);
 
 	server.output_layout = wlr_output_layout_create();
 

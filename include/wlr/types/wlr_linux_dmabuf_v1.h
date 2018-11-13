@@ -44,6 +44,7 @@ struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_from_params_resource(
 /* the protocol interface */
 struct wlr_linux_dmabuf_v1 {
 	struct wl_global *global;
+	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 
 	struct {
@@ -51,6 +52,7 @@ struct wlr_linux_dmabuf_v1 {
 	} events;
 
 	struct wl_listener display_destroy;
+	struct wl_listener backend_destroy;
 	struct wl_listener renderer_destroy;
 };
 
@@ -58,7 +60,7 @@ struct wlr_linux_dmabuf_v1 {
  * Create linux-dmabuf interface
  */
 struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *display,
-	struct wlr_renderer *renderer);
+	struct wlr_backend *backend, struct wlr_renderer *renderer);
 
 /**
  * Returns the wlr_linux_dmabuf if the given resource was created
