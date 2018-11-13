@@ -66,5 +66,9 @@ struct wlr_session *wlr_backend_get_session(struct wlr_backend *backend);
  * Returns the clock used by the backend for presentation feedback.
  */
 clockid_t wlr_backend_get_presentation_clock(struct wlr_backend *backend);
+/**
+ * Obtains the FD of the device used for rendering, or -1 if unavailable.
+ */
+int wlr_backend_get_render_fd(struct wlr_backend *backend);
 
 #endif

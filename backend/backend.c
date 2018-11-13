@@ -71,6 +71,13 @@ clockid_t wlr_backend_get_presentation_clock(struct wlr_backend *backend) {
 	return CLOCK_MONOTONIC;
 }
 
+int wlr_backend_get_render_fd(struct wlr_backend *backend) {
+	if (backend->impl->get_render_fd) {
+		return backend->impl->get_render_fd(backend);
+	}
+	return -1;
+}
+
 static size_t parse_outputs_env(const char *name) {
 	const char *outputs_str = getenv(name);
 	if (outputs_str == NULL) {

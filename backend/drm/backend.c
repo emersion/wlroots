@@ -1,5 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +54,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 	finish_drm_renderer(&drm->renderer);
 	wlr_session_close_file(drm->session, drm->fd);
 	wl_event_source_remove(drm->drm_event);
+	close(drm->render_fd);
 	free(drm);
 }
 
@@ -71,11 +74,17 @@ static clockid_t backend_get_presentation_clock(struct wlr_backend *backend) {
 	return drm->clock;
 }
 
+static int backend_get_render_fd(struct wlr_backend *backend) {
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
+	return drm->render_fd;
+}
+
 static struct wlr_backend_impl backend_impl = {
 	.start = backend_start,
 	.destroy = backend_destroy,
 	.get_renderer = backend_get_renderer,
 	.get_presentation_clock = backend_get_presentation_clock,
+	.get_render_fd = backend_get_render_fd,
 };
 
 bool wlr_backend_is_drm(struct wlr_backend *b) {
@@ -154,6 +163,17 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 		drm->parent = get_drm_backend_from_backend(parent);
 	}
 
+	char *render_name = drmGetRenderDeviceNameFromFd(gpu_fd);
+	if (!render_name) {
+		wlr_log_errno(WLR_ERROR, "Failed to get render device name");
+		goto error_fd;
+	}
+	drm->render_fd = open(render_name, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+	if (drm->render_fd < 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to open render node %s", render_name);
+	}
+	free(render_name);
+
 	drm->drm_invalidated.notify = drm_invalidated;
 	wlr_session_signal_add(session, gpu_fd, &drm->drm_invalidated);
 
@@ -164,7 +184,7 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 		WL_EVENT_READABLE, handle_drm_event, NULL);
 	if (!drm->drm_event) {
 		wlr_log(WLR_ERROR, "Failed to create DRM event source");
-		goto error_fd;
+		goto error_render_fd;
 	}
 
 	drm->session_signal.notify = session_signal;
@@ -194,6 +214,8 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 error_event:
 	wl_list_remove(&drm->session_signal.link);
 	wl_event_source_remove(drm->drm_event);
+error_render_fd:
+	close(drm->render_fd);
 error_fd:
 	wlr_session_close_file(drm->session, drm->fd);
 	free(drm);
