@@ -407,6 +407,11 @@ static void linux_dmabuf_send_formats(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
 			modifiers = &modifier_invalid;
 		}
 		for (size_t j = 0; j < modifiers_len; j++) {
+			// On Intel, scanning out I915_FORMAT_MOD_Y_TILED doesn't work.
+			// Disable it when testing direct scan-out.
+			if (modifiers[j] == I915_FORMAT_MOD_Y_TILED) {
+				continue;
+			}
 			if (version >= ZWP_LINUX_DMABUF_V1_MODIFIER_SINCE_VERSION) {
 				uint32_t modifier_lo = modifiers[j] & 0xFFFFFFFF;
 				uint32_t modifier_hi = modifiers[j] >> 32;

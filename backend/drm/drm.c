@@ -140,6 +140,9 @@ static bool add_plane(struct wlr_drm_backend *drm,
 				if (mods[i].formats & ((uint64_t)1 << j)) {
 					wlr_drm_format_set_add(&p->formats,
 						fmts[j + mods[i].offset], mods[i].modifier);
+					if (type == DRM_PLANE_TYPE_PRIMARY) {
+						wlr_log(WLR_DEBUG, "Plane supports fmt=%u mod=%llu", fmts[j + mods[i].offset], mods[i].modifier);
+					}
 				}
 			}
 		}
@@ -888,15 +891,22 @@ static bool drm_connector_attach_buffer(struct wlr_output *output,
 		return false;
 	}
 
+	wlr_log(WLR_DEBUG, "Attempting to scan-out DMA-BUF");
 	struct wlr_dmabuf_attributes attribs;
 	if (!wlr_buffer_get_dmabuf(buffer, &attribs)) {
+		wlr_log(WLR_DEBUG, "not a dma-buf");
 		return false;
 	}
 
+	wlr_log(WLR_DEBUG, "Format: %.4s", (char *) &attribs.format);
+	wlr_log(WLR_DEBUG, "Modifier: %ld", attribs.modifier);
+
 	if (attribs.flags != 0) {
+		wlr_log(WLR_DEBUG, "invalid flags");
 		return false;
 	}
 	if (attribs.width != output->width || attribs.height != output->height) {
+		wlr_log(WLR_DEBUG, "invalid size");
 		return false;
 	}
 
@@ -909,11 +919,14 @@ static bool drm_connector_attach_buffer(struct wlr_output *output,
 				&crtc->primary->formats, format, attribs.modifier)) {
 			attribs.format = format;
 		} else {
+			wlr_log(WLR_DEBUG, "invalid format/modifier: %d %ld", attribs.format, attribs.modifier);
 			return false;
 		}
 	}
 
 	memcpy(&conn->pending_dmabuf, &attribs, sizeof(attribs));
+
+	wlr_log(WLR_DEBUG, "WORKED");
 	return true;
 }
 
