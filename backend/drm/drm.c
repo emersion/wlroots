@@ -599,6 +599,40 @@ static size_t drm_connector_get_gamma_size(struct wlr_output *output) {
 	return 0;
 }
 
+static bool drm_connector_get_cursor_params(struct wlr_output *output,
+		const struct wlr_drm_format **format, int *width, int *height) {
+	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(output->backend);
+
+	if (conn->crtc == NULL) {
+		return false;
+	}
+
+	static const struct wlr_drm_format argb8888_linear = {
+		.format = DRM_FORMAT_ARGB8888,
+		.len = 1,
+		.modifiers = { DRM_FORMAT_MOD_LINEAR },
+	};
+	*format = &argb8888_linear;
+
+	if (conn->crtc->cursor != NULL) {
+		const struct wlr_drm_format *argb8888 = wlr_drm_format_set_get(
+			&conn->crtc->cursor->formats, DRM_FORMAT_ARGB8888);
+		// If modifiers aren't supported, stick with LINEAR
+		if (argb8888 != NULL && argb8888->len > 0) {
+			*format = argb8888;
+		}
+	}
+
+	int ret;
+	uint64_t w, h;
+	ret = drmGetCap(drm->fd, DRM_CAP_CURSOR_WIDTH, &w);
+	*width = ret == 0 ? w : 64;
+	ret = drmGetCap(drm->fd, DRM_CAP_CURSOR_HEIGHT, &h);
+	*height = ret == 0 ? h : 64;
+	return true;
+}
+
 bool set_drm_connector_gamma(struct wlr_output *output, size_t size,
 		const uint16_t *r, const uint16_t *g, const uint16_t *b) {
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
@@ -1102,6 +1136,7 @@ static const struct wlr_output_impl output_impl = {
 	.rollback = drm_connector_rollback,
 	.set_gamma = set_drm_connector_gamma,
 	.get_gamma_size = drm_connector_get_gamma_size,
+	.get_cursor_params = drm_connector_get_cursor_params,
 	.export_dmabuf = drm_connector_export_dmabuf,
 };
 

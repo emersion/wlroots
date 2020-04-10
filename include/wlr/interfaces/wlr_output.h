@@ -27,6 +27,8 @@ struct wlr_output_impl {
 	bool (*set_gamma)(struct wlr_output *output, size_t size,
 		const uint16_t *r, const uint16_t *g, const uint16_t *b);
 	size_t (*get_gamma_size)(struct wlr_output *output);
+	bool (*get_cursor_params)(struct wlr_output *output,
+		const struct wlr_drm_format **format, int *width, int *height);
 	bool (*export_dmabuf)(struct wlr_output *output,
 		struct wlr_dmabuf_attributes *attribs);
 };
