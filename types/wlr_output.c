@@ -755,8 +755,7 @@ void wlr_output_lock_software_cursors(struct wlr_output *output, bool lock) {
 
 	if (output->software_cursor_locks > 0 && output->hardware_cursor != NULL) {
 		assert(output->impl->set_cursor);
-		output->impl->set_cursor(output, NULL, 1,
-			WL_OUTPUT_TRANSFORM_NORMAL, 0, 0, true);
+		output->impl->set_cursor(output, NULL, 0, 0);
 		output_cursor_damage_whole(output->hardware_cursor);
 		output->hardware_cursor = NULL;
 	}
@@ -928,6 +927,10 @@ static void output_cursor_update_visible(struct wlr_output_cursor *cursor) {
 }
 
 static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
+	if (cursor->output->software_cursor_locks > 0) {
+		return false;
+	}
+
 	int32_t scale = cursor->output->scale;
 	enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
 	struct wlr_texture *texture = cursor->texture;
@@ -937,9 +940,10 @@ static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 		transform = cursor->surface->current.transform;
 	}
 
-	if (cursor->output->software_cursor_locks > 0) {
-		return false;
-	}
+	struct wlr_buffer *buffer = NULL; // TODO
+	(void)texture;
+	(void)scale;
+	(void)transform;
 
 	struct wlr_output_cursor *hwcur = cursor->output->hardware_cursor;
 	if (cursor->output->impl->set_cursor && (hwcur == NULL || hwcur == cursor)) {
@@ -947,9 +951,9 @@ static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 		// cursor position is outdated
 		assert(cursor->output->impl->move_cursor);
 		cursor->output->impl->move_cursor(cursor->output,
-			(int)cursor->x, (int)cursor->y);
-		if (cursor->output->impl->set_cursor(cursor->output, texture,
-				scale, transform, cursor->hotspot_x, cursor->hotspot_y, true)) {
+			cursor->x, cursor->y);
+		if (cursor->output->impl->set_cursor(cursor->output, buffer,
+				cursor->hotspot_x, cursor->hotspot_y)) {
 			cursor->output->hardware_cursor = cursor;
 			return true;
 		}

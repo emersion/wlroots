@@ -309,26 +309,9 @@ static void output_rollback(struct wlr_output *wlr_output) {
 }
 
 static bool output_set_cursor(struct wlr_output *wlr_output,
-		struct wlr_texture *texture, int32_t scale,
-		enum wl_output_transform transform,
-		int32_t hotspot_x, int32_t hotspot_y, bool update_texture) {
+		struct wlr_buffer *buffer, int hotspot_x, int hotspot_y) {
 	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
 	struct wlr_wl_backend *backend = output->backend;
-
-	struct wlr_box hotspot = { .x = hotspot_x, .y = hotspot_y };
-	wlr_box_transform(&hotspot, &hotspot,
-		wlr_output_transform_invert(wlr_output->transform),
-		output->cursor.width, output->cursor.height);
-
-	// TODO: use output->wlr_output.transform to transform pixels and hotpot
-	output->cursor.hotspot_x = hotspot.x;
-	output->cursor.hotspot_y = hotspot.y;
-
-	if (!update_texture) {
-		// Update hotspot without changing cursor image
-		update_wl_output_cursor(output);
-		return true;
-	}
 
 	if (output->cursor.surface == NULL) {
 		output->cursor.surface =
@@ -336,49 +319,14 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 	}
 	struct wl_surface *surface = output->cursor.surface;
 
-	if (texture != NULL) {
-		int width, height;
-		wlr_texture_get_size(texture, &width, &height);
-		width = width * wlr_output->scale / scale;
-		height = height * wlr_output->scale / scale;
-
-		output->cursor.width = width;
-		output->cursor.height = height;
-
-		if (output->cursor.egl_window == NULL) {
-			output->cursor.egl_window =
-				wl_egl_window_create(surface, width, height);
-		}
-		wl_egl_window_resize(output->cursor.egl_window, width, height, 0, 0);
-
-		EGLSurface egl_surface =
-			wlr_egl_create_surface(&backend->egl, output->cursor.egl_window);
-
-		wlr_egl_make_current(&backend->egl, egl_surface, NULL);
-
-		struct wlr_box cursor_box = {
-			.width = width,
-			.height = height,
-		};
-
-		float projection[9];
-		wlr_matrix_projection(projection, width, height, wlr_output->transform);
-
-		float matrix[9];
-		wlr_matrix_project_box(matrix, &cursor_box, transform, 0, projection);
-
-		wlr_renderer_begin(backend->renderer, width, height);
-		wlr_renderer_clear(backend->renderer, (float[]){ 0.0, 0.0, 0.0, 0.0 });
-		wlr_render_texture_with_matrix(backend->renderer, texture, matrix, 1.0);
-		wlr_renderer_end(backend->renderer);
-
-		wlr_egl_swap_buffers(&backend->egl, egl_surface, NULL);
-		wlr_egl_destroy_surface(&backend->egl, egl_surface);
+	if (buffer != NULL) {
+		// TODO: update buffer
 	} else {
 		wl_surface_attach(surface, NULL, 0, 0);
 		wl_surface_commit(surface);
 	}
 
+	// TODO: update hotspot
 	update_wl_output_cursor(output);
 	return true;
 }

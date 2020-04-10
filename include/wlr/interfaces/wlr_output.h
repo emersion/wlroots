@@ -15,9 +15,8 @@
 #include <wlr/types/wlr_output.h>
 
 struct wlr_output_impl {
-	bool (*set_cursor)(struct wlr_output *output, struct wlr_texture *texture,
-		int32_t scale, enum wl_output_transform transform,
-		int32_t hotspot_x, int32_t hotspot_y, bool update_texture);
+	bool (*set_cursor)(struct wlr_output *output, struct wlr_buffer *buffer,
+		int hotspot_x, int hotspot_y);
 	bool (*move_cursor)(struct wlr_output *output, int x, int y);
 	void (*destroy)(struct wlr_output *output);
 	bool (*attach_render)(struct wlr_output *output, int *buffer_age);

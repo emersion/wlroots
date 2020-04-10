@@ -940,9 +940,7 @@ struct wlr_output_mode *wlr_drm_connector_add_mode(struct wlr_output *output,
 }
 
 static bool drm_connector_set_cursor(struct wlr_output *output,
-		struct wlr_texture *texture, int32_t scale,
-		enum wl_output_transform transform,
-		int32_t hotspot_x, int32_t hotspot_y, bool update_texture) {
+		struct wlr_buffer *buffer, int hotspot_x, int hotspot_y) {
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
 	struct wlr_drm_backend *drm = get_drm_backend_from_backend(output->backend);
 
@@ -962,53 +960,13 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 		crtc->cursor = plane;
 	}
 
-	if (!plane->surf.gbm) {
-		int ret;
-		uint64_t w, h;
-		ret = drmGetCap(drm->fd, DRM_CAP_CURSOR_WIDTH, &w);
-		w = ret ? 64 : w;
-		ret = drmGetCap(drm->fd, DRM_CAP_CURSOR_HEIGHT, &h);
-		h = ret ? 64 : h;
-
-		if (!drm->parent) {
-			if (!init_drm_surface(&plane->surf, &drm->renderer, w, h,
-					drm->renderer.gbm_format, NULL,
-					GBM_BO_USE_LINEAR | GBM_BO_USE_SCANOUT)) {
-				wlr_log(WLR_ERROR, "Cannot allocate cursor resources");
-				return false;
-			}
-		} else {
-			if (!init_drm_surface(&plane->surf, &drm->parent->renderer, w, h,
-					drm->parent->renderer.gbm_format, NULL,
-					GBM_BO_USE_LINEAR)) {
-				wlr_log(WLR_ERROR, "Cannot allocate cursor resources");
-				return false;
-			}
-
-			if (!init_drm_surface(&plane->mgpu_surf, &drm->renderer, w, h,
-					drm->renderer.gbm_format, NULL,
-					GBM_BO_USE_LINEAR | GBM_BO_USE_SCANOUT)) {
-				wlr_log(WLR_ERROR, "Cannot allocate cursor resources");
-				return false;
-			}
-		}
-	}
-
-	wlr_matrix_projection(plane->matrix, plane->surf.width,
-		plane->surf.height, output->transform);
-
-	struct wlr_box hotspot = { .x = hotspot_x, .y = hotspot_y };
-	wlr_box_transform(&hotspot, &hotspot,
-		wlr_output_transform_invert(output->transform),
-		plane->surf.width, plane->surf.height);
-
-	if (plane->cursor_hotspot_x != hotspot.x ||
-			plane->cursor_hotspot_y != hotspot.y) {
+	if (plane->cursor_hotspot_x != hotspot_x ||
+			plane->cursor_hotspot_y != hotspot_y) {
 		// Update cursor hotspot
-		conn->cursor_x -= hotspot.x - plane->cursor_hotspot_x;
-		conn->cursor_y -= hotspot.y - plane->cursor_hotspot_y;
-		plane->cursor_hotspot_x = hotspot.x;
-		plane->cursor_hotspot_y = hotspot.y;
+		conn->cursor_x -= hotspot_x - plane->cursor_hotspot_x;
+		conn->cursor_y -= hotspot_y - plane->cursor_hotspot_y;
+		plane->cursor_hotspot_x = hotspot_x;
+		plane->cursor_hotspot_y = hotspot_y;
 
 		if (!drm->iface->crtc_move_cursor(drm, conn->crtc, conn->cursor_x,
 				conn->cursor_y)) {
@@ -1018,47 +976,11 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 		wlr_output_update_needs_frame(output);
 	}
 
-	if (!update_texture) {
-		// Don't update cursor image
-		return true;
-	}
-
-	plane->cursor_enabled = false;
-	if (texture != NULL) {
-		int width, height;
-		wlr_texture_get_size(texture, &width, &height);
-		width = width * output->scale / scale;
-		height = height * output->scale / scale;
-
-		if (width > (int)plane->surf.width || height > (int)plane->surf.height) {
-			wlr_log(WLR_ERROR, "Cursor too large (max %dx%d)",
-				(int)plane->surf.width, (int)plane->surf.height);
-			return false;
-		}
-
-		make_drm_surface_current(&plane->surf, NULL);
-
-		struct wlr_renderer *rend = plane->surf.renderer->wlr_rend;
-
-		struct wlr_box cursor_box = { .width = width, .height = height };
-
-		float matrix[9];
-		wlr_matrix_project_box(matrix, &cursor_box, transform, 0, plane->matrix);
-
-		wlr_renderer_begin(rend, plane->surf.width, plane->surf.height);
-		wlr_renderer_clear(rend, (float[]){ 0.0, 0.0, 0.0, 0.0 });
-		wlr_render_texture_with_matrix(rend, texture, matrix, 1.0);
-		wlr_renderer_end(rend);
-
-		swap_drm_surface_buffers(&plane->surf, NULL);
-
-		plane->cursor_enabled = true;
-	}
-
 	if (!drm->session->active) {
 		return true; // will be committed when session is resumed
 	}
 
+	// TODO: get BO from wlr_buffer
 	struct gbm_bo *bo = plane->cursor_enabled ? plane->surf.back : NULL;
 	if (bo && drm->parent) {
 		bo = copy_drm_surface_mgpu(&plane->mgpu_surf, bo);
