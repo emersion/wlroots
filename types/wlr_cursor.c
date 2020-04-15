@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_surface.h>
 #include <wlr/util/log.h>
 #include "util/signal.h"
 
@@ -50,6 +51,17 @@ struct wlr_cursor_output_cursor {
 	struct wl_listener layout_output_destroy;
 };
 
+struct wlr_cursor_image {
+	struct wlr_surface *surface;
+	struct wl_listener surface_destroy;
+
+	uint8_t *pixels;
+	int stride, width, height;
+	float scale;
+
+	int hotspot_x, hotspot_y;
+};
+
 struct wlr_cursor_state {
 	struct wlr_cursor *cursor;
 	struct wl_list devices; // wlr_cursor_device::link
@@ -57,6 +69,8 @@ struct wlr_cursor_state {
 	struct wlr_output_layout *layout;
 	struct wlr_output *mapped_output;
 	struct wlr_box *mapped_box;
+
+	struct wlr_cursor_image image;
 
 	struct wl_listener layout_add;
 	struct wl_listener layout_change;
@@ -82,6 +96,8 @@ struct wlr_cursor *wlr_cursor_create(void) {
 
 	wl_list_init(&cur->state->devices);
 	wl_list_init(&cur->state->output_cursors);
+
+	wl_list_init(&cur->state->image.surface_destroy.link);
 
 	// pointer signals
 	wl_signal_init(&cur->events.motion);
@@ -171,8 +187,18 @@ static void cursor_device_destroy(struct wlr_cursor_device *c_device) {
 	free(c_device);
 }
 
+static void cursor_image_reset(struct wlr_cursor_image *img) {
+	wl_list_remove(&img->surface_destroy.link);
+	wl_list_init(&img->surface_destroy.link);
+	img->surface = NULL;
+
+	free(img->pixels);
+	img->pixels = NULL;
+}
+
 void wlr_cursor_destroy(struct wlr_cursor *cur) {
 	cursor_detach_output_layout(cur);
+	cursor_image_reset(&cur->state->image);
 
 	struct wlr_cursor_device *device, *device_tmp = NULL;
 	wl_list_for_each_safe(device, device_tmp, &cur->state->devices, link) {
@@ -327,24 +353,47 @@ void wlr_cursor_move(struct wlr_cursor *cur, struct wlr_input_device *dev,
 void wlr_cursor_set_image(struct wlr_cursor *cur, const uint8_t *pixels,
 		int32_t stride, uint32_t width, uint32_t height, int32_t hotspot_x,
 		int32_t hotspot_y, float scale) {
+	struct wlr_cursor_image *img = &cur->state->image;
+	cursor_image_reset(img);
+	img->pixels = malloc(stride * height);
+	if (img->pixels == NULL) {
+		wlr_log_errno(WLR_ERROR, "Allocation failed");
+		return;
+	}
+	memcpy(img->pixels, pixels, stride * height);
+	img->stride = stride;
+	img->width = width;
+	img->height = height;
+	img->scale = scale;
+	img->hotspot_x = hotspot_x;
+	img->hotspot_y = hotspot_y;
+
 	struct wlr_cursor_output_cursor *output_cursor;
 	wl_list_for_each(output_cursor, &cur->state->output_cursors, link) {
-		float output_scale = output_cursor->output_cursor->output->scale;
-		if (scale > 0 && output_scale != scale) {
-			continue;
-		}
-
-		wlr_output_cursor_set_image(output_cursor->output_cursor, pixels,
-			stride, width, height, hotspot_x, hotspot_y);
+		output_cursor_update_image(output_cursor);
 	}
+}
+
+static void cursor_image_handle_surface_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_cursor_image *img =
+		wl_container_of(listener, img, surface_destroy);
+	cursor_image_reset(img);
 }
 
 void wlr_cursor_set_surface(struct wlr_cursor *cur, struct wlr_surface *surface,
 		int32_t hotspot_x, int32_t hotspot_y) {
+	struct wlr_cursor_image *img = &cur->state->image;
+	cursor_image_reset(img);
+	img->surface = surface;
+	img->surface_destroy.notify = cursor_image_handle_surface_destroy;
+	wl_signal_add(&surface->events.destroy, &img->surface_destroy);
+	img->hotspot_x = hotspot_x;
+	img->hotspot_y = hotspot_y;
+
 	struct wlr_cursor_output_cursor *output_cursor;
 	wl_list_for_each(output_cursor, &cur->state->output_cursors, link) {
-		wlr_output_cursor_set_surface(output_cursor->output_cursor, surface,
-			hotspot_x, hotspot_y);
+		output_cursor_update_image(output_cursor);
 	}
 }
 
@@ -705,6 +754,23 @@ static void handle_layout_output_destroy(struct wl_listener *listener,
 	output_cursor_destroy(output_cursor);
 }
 
+static void output_cursor_update_image(
+		struct wlr_cursor_output_cursor *output_cursor) {
+	struct wlr_output_image *img = &output_cursor->cursor->state->image;
+	if (img->surface != NULL) {
+		wlr_output_cursor_set_surface(output_cursor->output_cursor,
+			img->surface, img->hotspot_x, img->hotspot_y);
+	} else {
+		// TODO: we need to remember *all* scales here
+		float output_scale = output_cursor->output_cursor->output->scale;
+		if (scale > 0 && output_scale != scale) {
+			return;
+		}
+		wlr_output_cursor_set_image(output_cursor->output_cursor, pixels,
+			stride, width, height, hotspot_x, hotspot_y);
+	}
+}
+
 static void layout_add(struct wlr_cursor_state *state,
 		struct wlr_output_layout_output *l_output) {
 	struct wlr_cursor_output_cursor *output_cursor;
@@ -733,6 +799,8 @@ static void layout_add(struct wlr_cursor_state *state,
 		&output_cursor->layout_output_destroy);
 
 	wl_list_insert(&state->output_cursors, &output_cursor->link);
+
+	output_cursor_update_image(output_cursor);
 }
 
 static void handle_layout_add(struct wl_listener *listener, void *data) {
