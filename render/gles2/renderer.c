@@ -214,8 +214,12 @@ static void gles2_scissor(struct wlr_renderer *wlr_renderer,
 	push_gles2_debug(renderer);
 	if (box != NULL) {
 		struct wlr_box gl_box;
-		wlr_box_transform(&gl_box, box, WL_OUTPUT_TRANSFORM_FLIPPED_180,
-			renderer->viewport_width, renderer->viewport_height);
+		if (renderer->current_buffer != NULL) {
+			memcpy(&gl_box, box, sizeof(gl_box));
+		} else {
+			wlr_box_transform(&gl_box, box, WL_OUTPUT_TRANSFORM_FLIPPED_180,
+				renderer->viewport_width, renderer->viewport_height);
+		}
 
 		glScissor(gl_box.x, gl_box.y, gl_box.width, gl_box.height);
 		glEnable(GL_SCISSOR_TEST);
@@ -224,6 +228,12 @@ static void gles2_scissor(struct wlr_renderer *wlr_renderer,
 	}
 	pop_gles2_debug(renderer);
 }
+
+static const float flip_180[9] = {
+	1.0f, 0.0f, 0.0f,
+	0.0f, -1.0f, 0.0f,
+	0.0f, 0.0f, 1.0f,
+};
 
 static bool gles2_render_subtexture_with_matrix(
 		struct wlr_renderer *wlr_renderer, struct wlr_texture *wlr_texture,
@@ -257,10 +267,15 @@ static bool gles2_render_subtexture_with_matrix(
 		abort();
 	}
 
+	float gl_matrix[9];
+	if (renderer->current_buffer != NULL) {
+		wlr_matrix_multiply(gl_matrix, flip_180, matrix);
+	} else {
+		memcpy(gl_matrix, matrix, sizeof(gl_matrix));
+	}
 	// OpenGL ES 2 requires the glUniformMatrix3fv transpose parameter to be set
 	// to GL_FALSE
-	float transposition[9];
-	wlr_matrix_transpose(transposition, matrix);
+	wlr_matrix_transpose(gl_matrix, gl_matrix);
 
 	push_gles2_debug(renderer);
 
@@ -271,7 +286,7 @@ static bool gles2_render_subtexture_with_matrix(
 
 	glUseProgram(shader->program);
 
-	glUniformMatrix3fv(shader->proj, 1, GL_FALSE, transposition);
+	glUniformMatrix3fv(shader->proj, 1, GL_FALSE, gl_matrix);
 	glUniform1i(shader->invert_y, texture->inverted_y);
 	glUniform1i(shader->tex, 0);
 	glUniform1f(shader->alpha, alpha);
@@ -309,15 +324,20 @@ static void gles2_render_quad_with_matrix(struct wlr_renderer *wlr_renderer,
 	struct wlr_gles2_renderer *renderer =
 		gles2_get_renderer_in_context(wlr_renderer);
 
+	float gl_matrix[9];
+	if (renderer->current_buffer != NULL) {
+		wlr_matrix_multiply(gl_matrix, flip_180, matrix);
+	} else {
+		memcpy(gl_matrix, matrix, sizeof(gl_matrix));
+	}
 	// OpenGL ES 2 requires the glUniformMatrix3fv transpose parameter to be set
 	// to GL_FALSE
-	float transposition[9];
-	wlr_matrix_transpose(transposition, matrix);
+	wlr_matrix_transpose(gl_matrix, gl_matrix);
 
 	push_gles2_debug(renderer);
 	glUseProgram(renderer->shaders.quad.program);
 
-	glUniformMatrix3fv(renderer->shaders.quad.proj, 1, GL_FALSE, transposition);
+	glUniformMatrix3fv(renderer->shaders.quad.proj, 1, GL_FALSE, gl_matrix);
 	glUniform4f(renderer->shaders.quad.color, color[0], color[1], color[2], color[3]);
 
 	glVertexAttribPointer(renderer->shaders.quad.pos_attrib, 2, GL_FLOAT, GL_FALSE,
@@ -337,10 +357,15 @@ static void gles2_render_ellipse_with_matrix(struct wlr_renderer *wlr_renderer,
 	struct wlr_gles2_renderer *renderer =
 		gles2_get_renderer_in_context(wlr_renderer);
 
+	float gl_matrix[9];
+	if (renderer->current_buffer != NULL) {
+		wlr_matrix_multiply(gl_matrix, flip_180, matrix);
+	} else {
+		memcpy(gl_matrix, matrix, sizeof(gl_matrix));
+	}
 	// OpenGL ES 2 requires the glUniformMatrix3fv transpose parameter to be set
 	// to GL_FALSE
-	float transposition[9];
-	wlr_matrix_transpose(transposition, matrix);
+	wlr_matrix_transpose(gl_matrix, gl_matrix);
 
 	static const GLfloat texcoord[] = {
 		1, 0, // top right
@@ -352,7 +377,7 @@ static void gles2_render_ellipse_with_matrix(struct wlr_renderer *wlr_renderer,
 	push_gles2_debug(renderer);
 	glUseProgram(renderer->shaders.ellipse.program);
 
-	glUniformMatrix3fv(renderer->shaders.ellipse.proj, 1, GL_FALSE, transposition);
+	glUniformMatrix3fv(renderer->shaders.ellipse.proj, 1, GL_FALSE, gl_matrix);
 	glUniform4f(renderer->shaders.ellipse.color, color[0], color[1], color[2], color[3]);
 
 	glVertexAttribPointer(renderer->shaders.ellipse.pos_attrib, 2, GL_FLOAT,
@@ -474,7 +499,11 @@ static bool gles2_read_pixels(struct wlr_renderer *wlr_renderer,
 		// one glReadPixels call
 		glReadPixels(src_x, renderer->viewport_height - height - src_y,
 			width, height, fmt->gl_format, fmt->gl_type, p);
-		*flags = WLR_RENDERER_READ_PIXELS_Y_INVERT;
+		if (renderer->current_buffer != NULL) {
+			*flags = 0;
+		} else {
+			*flags = WLR_RENDERER_READ_PIXELS_Y_INVERT;
+		}
 	} else {
 		// Unfortunately GLES2 doesn't support GL_PACK_*, so we have to read
 		// the lines out row by row
@@ -510,6 +539,7 @@ static bool gles2_blit_dmabuf(struct wlr_renderer *wlr_renderer,
 		goto restore_context_out;
 	}
 
+	// TODO: get inverted_y right when current_buffer != NULL
 	// This is to take into account y-inversion on both buffers rather than
 	// just the source buffer.
 	bool src_inverted_y =
