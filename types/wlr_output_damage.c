@@ -13,24 +13,6 @@ static void output_handle_destroy(struct wl_listener *listener, void *data) {
 	wlr_output_damage_destroy(output_damage);
 }
 
-static void output_handle_mode(struct wl_listener *listener, void *data) {
-	struct wlr_output_damage *output_damage =
-		wl_container_of(listener, output_damage, output_mode);
-	wlr_output_damage_add_whole(output_damage);
-}
-
-static void output_handle_transform(struct wl_listener *listener, void *data) {
-	struct wlr_output_damage *output_damage =
-		wl_container_of(listener, output_damage, output_transform);
-	wlr_output_damage_add_whole(output_damage);
-}
-
-static void output_handle_scale(struct wl_listener *listener, void *data) {
-	struct wlr_output_damage *output_damage =
-		wl_container_of(listener, output_damage, output_scale);
-	wlr_output_damage_add_whole(output_damage);
-}
-
 static void output_handle_needs_frame(struct wl_listener *listener,
 		void *data) {
 	struct wlr_output_damage *output_damage =
@@ -59,31 +41,36 @@ static void output_handle_frame(struct wl_listener *listener, void *data) {
 static void output_handle_commit(struct wl_listener *listener, void *data) {
 	struct wlr_output_damage *output_damage =
 		wl_container_of(listener, output_damage, output_commit);
+	struct wlr_output_event_commit *event = data;
 
-	if (!(output_damage->output->pending.committed & WLR_OUTPUT_STATE_BUFFER)) {
-		return;
+	uint32_t invalidate = WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_TRANSFORM |
+		WLR_OUTPUT_STATE_SCALE;
+	if (event->committed & invalidate) {
+		wlr_output_damage_add_whole(output_damage);
 	}
 
-	pixman_region32_t *prev;
-	switch (output_damage->output->pending.buffer_type) {
-	case WLR_OUTPUT_STATE_BUFFER_RENDER:
-		// render-buffers have been swapped, rotate the damage
+	if (event->committed & WLR_OUTPUT_STATE_BUFFER) {
+		pixman_region32_t *prev;
+		switch (output_damage->output->pending.buffer_type) {
+		case WLR_OUTPUT_STATE_BUFFER_RENDER:
+			// render-buffers have been swapped, rotate the damage
 
-		// same as decrementing, but works on unsigned integers
-		output_damage->previous_idx += WLR_OUTPUT_DAMAGE_PREVIOUS_LEN - 1;
-		output_damage->previous_idx %= WLR_OUTPUT_DAMAGE_PREVIOUS_LEN;
+			// same as decrementing, but works on unsigned integers
+			output_damage->previous_idx += WLR_OUTPUT_DAMAGE_PREVIOUS_LEN - 1;
+			output_damage->previous_idx %= WLR_OUTPUT_DAMAGE_PREVIOUS_LEN;
 
-		prev = &output_damage->previous[output_damage->previous_idx];
-		pixman_region32_copy(prev, &output_damage->current);
-		break;
-	case WLR_OUTPUT_STATE_BUFFER_SCANOUT:
-		// accumulate render-buffer damage
-		prev = &output_damage->previous[output_damage->previous_idx];
-		pixman_region32_union(prev, prev, &output_damage->current);
-		break;
+			prev = &output_damage->previous[output_damage->previous_idx];
+			pixman_region32_copy(prev, &output_damage->current);
+			break;
+		case WLR_OUTPUT_STATE_BUFFER_SCANOUT:
+			// accumulate render-buffer damage
+			prev = &output_damage->previous[output_damage->previous_idx];
+			pixman_region32_union(prev, prev, &output_damage->current);
+			break;
+		}
+
+		pixman_region32_clear(&output_damage->current);
 	}
-
-	pixman_region32_clear(&output_damage->current);
 }
 
 struct wlr_output_damage *wlr_output_damage_create(struct wlr_output *output) {
@@ -105,12 +92,6 @@ struct wlr_output_damage *wlr_output_damage_create(struct wlr_output *output) {
 
 	wl_signal_add(&output->events.destroy, &output_damage->output_destroy);
 	output_damage->output_destroy.notify = output_handle_destroy;
-	wl_signal_add(&output->events.mode, &output_damage->output_mode);
-	output_damage->output_mode.notify = output_handle_mode;
-	wl_signal_add(&output->events.transform, &output_damage->output_transform);
-	output_damage->output_transform.notify = output_handle_transform;
-	wl_signal_add(&output->events.scale, &output_damage->output_scale);
-	output_damage->output_scale.notify = output_handle_scale;
 	wl_signal_add(&output->events.needs_frame, &output_damage->output_needs_frame);
 	output_damage->output_needs_frame.notify = output_handle_needs_frame;
 	wl_signal_add(&output->events.damage, &output_damage->output_damage);
@@ -129,9 +110,6 @@ void wlr_output_damage_destroy(struct wlr_output_damage *output_damage) {
 	}
 	wlr_signal_emit_safe(&output_damage->events.destroy, output_damage);
 	wl_list_remove(&output_damage->output_destroy.link);
-	wl_list_remove(&output_damage->output_mode.link);
-	wl_list_remove(&output_damage->output_transform.link);
-	wl_list_remove(&output_damage->output_scale.link);
 	wl_list_remove(&output_damage->output_needs_frame.link);
 	wl_list_remove(&output_damage->output_damage.link);
 	wl_list_remove(&output_damage->output_frame.link);
