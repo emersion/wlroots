@@ -66,7 +66,8 @@ static void slot_handle_release(struct wl_listener *listener, void *data) {
 	slot->acquired = false;
 }
 
-static struct wlr_buffer *slot_acquire(struct wlr_swapchain_slot *slot) {
+static struct wlr_buffer *slot_acquire(struct wlr_swapchain *swapchain,
+		struct wlr_swapchain_slot *slot, int *age) {
 	assert(!slot->acquired);
 	assert(slot->buffer != NULL);
 
@@ -75,11 +76,15 @@ static struct wlr_buffer *slot_acquire(struct wlr_swapchain_slot *slot) {
 	slot->release.notify = slot_handle_release;
 	wl_signal_add(&slot->buffer->events.release, &slot->release);
 
+	if (age != NULL) {
+		*age = slot->age;
+	}
+
 	return wlr_buffer_lock(slot->buffer);
 }
 
-struct wlr_buffer *wlr_swapchain_acquire(
-		struct wlr_swapchain *swapchain) {
+struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain,
+		int *age) {
 	struct wlr_swapchain_slot *free_slot = NULL;
 	for (size_t i = 0; i < WLR_SWAPCHAIN_CAP; i++) {
 		struct wlr_swapchain_slot *slot = &swapchain->slots[i];
@@ -87,7 +92,7 @@ struct wlr_buffer *wlr_swapchain_acquire(
 			continue;
 		}
 		if (slot->buffer != NULL) {
-			return slot_acquire(slot);
+			return slot_acquire(swapchain, slot, age);
 		}
 		free_slot = slot;
 	}
@@ -107,5 +112,24 @@ struct wlr_buffer *wlr_swapchain_acquire(
 		wlr_log(WLR_ERROR, "Failed to allocate buffer");
 		return NULL;
 	}
-	return slot_acquire(free_slot);
+	return slot_acquire(swapchain, free_slot, age);
+}
+
+void wlr_swapchain_set_buffer_submitted(struct wlr_swapchain *swapchain,
+		struct wlr_buffer *buffer) {
+	assert(buffer != NULL);
+
+	// See the algorithm described in:
+	// https://www.khronos.org/registry/EGL/extensions/EXT/EGL_EXT_buffer_age.txt
+	bool found = false;
+	for (size_t i = 0; i < WLR_SWAPCHAIN_CAP; i++) {
+		struct wlr_swapchain_slot *slot = &swapchain->slots[i];
+		if (slot->buffer == buffer) {
+			slot->age = 1;
+			found = true;
+		} else if (slot->age > 0) {
+			slot->age++;
+		}
+	}
+	assert(found);
 }
