@@ -111,14 +111,21 @@ static void destroy_wl_buffer(struct wlr_wl_buffer *buffer) {
 	if (buffer == NULL) {
 		return;
 	}
+	wl_list_remove(&buffer->link);
+	wl_list_remove(&buffer->destroy.link);
 	wl_buffer_destroy(buffer->wl_buffer);
-	wlr_buffer_unlock(buffer->buffer);
 	free(buffer);
+}
+
+static void buffer_handle_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_wl_buffer *buffer = wl_container_of(listener, buffer, destroy);
+	destroy_wl_buffer(buffer);
 }
 
 static void buffer_handle_release(void *data, struct wl_buffer *wl_buffer) {
 	struct wlr_wl_buffer *buffer = data;
-	destroy_wl_buffer(buffer);
+	buffer->released = true;
+	wlr_buffer_unlock(buffer->buffer);
 }
 
 static const struct wl_buffer_listener buffer_listener = {
@@ -140,8 +147,9 @@ static bool test_buffer(struct wlr_wl_backend *wl,
 	return true;
 }
 
-static struct wlr_wl_buffer *create_wl_buffer(struct wlr_wl_backend *wl,
+static struct wlr_wl_buffer *create_wl_buffer(struct wlr_wl_output *output,
 		struct wlr_buffer *wlr_buffer) {
+	struct wlr_wl_backend *wl = output->backend;
 	if (!test_buffer(wl, wlr_buffer)) {
 		return NULL;
 	}
@@ -181,6 +189,11 @@ static struct wlr_wl_buffer *create_wl_buffer(struct wlr_wl_backend *wl,
 	}
 	buffer->wl_buffer = wl_buffer;
 	buffer->buffer = wlr_buffer_lock(wlr_buffer);
+
+	wl_list_insert(&output->buffers, &buffer->link);
+
+	buffer->destroy.notify = buffer_handle_destroy;
+	wl_signal_add(&wlr_buffer->events.destroy, &buffer->destroy);
 
 	wl_buffer_add_listener(wl_buffer, &buffer_listener, buffer);
 
@@ -254,10 +267,22 @@ static bool output_commit(struct wlr_output *wlr_output) {
 			}
 			break;
 		case WLR_OUTPUT_STATE_BUFFER_SCANOUT:;
-			struct wlr_wl_buffer *buffer =
-				create_wl_buffer(output->backend, wlr_output->pending.buffer);
-			if (buffer == NULL) {
-				return false;
+			bool found = false;
+			struct wlr_wl_buffer *buffer;
+			wl_list_for_each(buffer, &output->buffers, link) {
+				if (buffer->buffer == wlr_output->pending.buffer &&
+						buffer->released) {
+					found = true;
+					wlr_buffer_lock(buffer->buffer);
+					buffer->released = false;
+					break;
+				}
+			}
+			if (!found) {
+				buffer = create_wl_buffer(output, wlr_output->pending.buffer);
+				if (buffer == NULL) {
+					return false;
+				}
 			}
 
 			wl_surface_attach(output->surface, buffer->wl_buffer, 0, 0);
@@ -401,6 +426,11 @@ static void output_destroy(struct wlr_output *wlr_output) {
 		wl_callback_destroy(output->frame_callback);
 	}
 
+	struct wlr_wl_buffer *buffer, *buffer_tmp;
+	wl_list_for_each_safe(buffer, buffer_tmp, &output->buffers, link) {
+		destroy_wl_buffer(buffer);
+	}
+
 	struct wlr_wl_presentation_feedback *feedback, *feedback_tmp;
 	wl_list_for_each_safe(feedback, feedback_tmp,
 			&output->presentation_feedbacks, link) {
@@ -513,6 +543,7 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 	wlr_output_set_description(wlr_output, description);
 
 	output->backend = backend;
+	wl_list_init(&output->buffers);
 	wl_list_init(&output->presentation_feedbacks);
 
 	output->surface = wl_compositor_create_surface(backend->compositor);

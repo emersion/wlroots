@@ -50,6 +50,10 @@ struct wlr_wl_backend {
 struct wlr_wl_buffer {
 	struct wlr_buffer *buffer;
 	struct wl_buffer *wl_buffer;
+	struct wl_list link; // wlr_wl_output.buffers
+	bool released;
+
+	struct wl_listener destroy;
 };
 
 struct wlr_wl_presentation_feedback {
@@ -72,6 +76,7 @@ struct wlr_wl_output {
 	struct zxdg_toplevel_decoration_v1 *zxdg_toplevel_decoration_v1;
 	struct wl_egl_window *egl_window;
 	EGLSurface egl_surface;
+	struct wl_list buffers; // wlr_wl_buffer.link
 	struct wl_list presentation_feedbacks;
 
 	uint32_t enter_serial;
