@@ -146,11 +146,24 @@ static void set_plane_props(struct atomic *atom, struct wlr_drm_backend *drm,
 		goto error;
 	}
 
+	uint64_t src_x = 0;
+	uint64_t src_y = 0;
+	uint64_t src_w = plane->surf.width;
+	uint64_t src_h = plane->surf.height;
+	if (plane->type == DRM_PLANE_TYPE_PRIMARY) {
+		//src_x = 100; src_w -= 100;
+		//src_w /= 2;
+		//atomic_add(atom, id, props->rotation, DRM_MODE_ROTATE_180);
+	}
+	if (plane->type == DRM_PLANE_TYPE_CURSOR) {
+		//src_x = 10; src_w -= 10;
+	}
+
 	// The src_* properties are in 16.16 fixed point
-	atomic_add(atom, id, props->src_x, 0);
-	atomic_add(atom, id, props->src_y, 0);
-	atomic_add(atom, id, props->src_w, (uint64_t)plane->surf.width << 16);
-	atomic_add(atom, id, props->src_h, (uint64_t)plane->surf.height << 16);
+	atomic_add(atom, id, props->src_x, src_x << 16);
+	atomic_add(atom, id, props->src_y, src_y << 16);
+	atomic_add(atom, id, props->src_w, src_w << 16);
+	atomic_add(atom, id, props->src_h, src_h << 16);
 	atomic_add(atom, id, props->crtc_w, plane->surf.width);
 	atomic_add(atom, id, props->crtc_h, plane->surf.height);
 	atomic_add(atom, id, props->fb_id, fb_id);

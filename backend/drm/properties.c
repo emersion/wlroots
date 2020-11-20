@@ -53,6 +53,7 @@ static const struct prop_info plane_info[] = {
 	{ "SRC_W", INDEX(src_w) },
 	{ "SRC_X", INDEX(src_x) },
 	{ "SRC_Y", INDEX(src_y) },
+	{ "rotation", INDEX(rotation) },
 	{ "type", INDEX(type) },
 #undef INDEX
 };
