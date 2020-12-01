@@ -53,7 +53,6 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
 	}
 
 	wl_list_remove(&backend->display_destroy.link);
-	wl_list_remove(&backend->renderer_destroy.link);
 
 	struct wlr_headless_output *output, *output_tmp;
 	wl_list_for_each_safe(output, output_tmp, &backend->outputs, link) {
@@ -68,22 +67,8 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
 
 	wlr_signal_emit_safe(&wlr_backend->events.destroy, backend);
 
-	free(backend->format);
-
-	if (!backend->has_parent_renderer) {
-		wlr_renderer_destroy(backend->renderer);
-	}
-
-	wlr_allocator_destroy(backend->allocator);
 	close(backend->drm_fd);
 	free(backend);
-}
-
-static struct wlr_renderer *backend_get_renderer(
-		struct wlr_backend *wlr_backend) {
-	struct wlr_headless_backend *backend =
-		headless_backend_from_backend(wlr_backend);
-	return backend->renderer;
 }
 
 static int backend_get_drm_fd(struct wlr_backend *wlr_backend) {
@@ -95,7 +80,6 @@ static int backend_get_drm_fd(struct wlr_backend *wlr_backend) {
 static const struct wlr_backend_impl backend_impl = {
 	.start = backend_start,
 	.destroy = backend_destroy,
-	.get_renderer = backend_get_renderer,
 	.get_drm_fd = backend_get_drm_fd,
 };
 
@@ -105,51 +89,17 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	backend_destroy(&backend->backend);
 }
 
-static void handle_renderer_destroy(struct wl_listener *listener, void *data) {
-	struct wlr_headless_backend *backend =
-		wl_container_of(listener, backend, renderer_destroy);
-	backend_destroy(&backend->backend);
-}
-
-static bool backend_init(struct wlr_headless_backend *backend,
-		struct wl_display *display, struct wlr_allocator *allocator,
-		struct wlr_renderer *renderer) {
+static void backend_init(struct wlr_headless_backend *backend,
+		struct wl_display *display, int drm_fd) {
 	wlr_backend_init(&backend->backend, &backend_impl);
 	backend->display = display;
 	wl_list_init(&backend->outputs);
 	wl_list_init(&backend->input_devices);
 
-	backend->allocator = allocator;
-
-	if (renderer == NULL) {
-		renderer = wlr_renderer_autocreate(&backend->backend);
-		if (!renderer) {
-			wlr_log(WLR_ERROR, "Failed to create renderer");
-			return false;
-		}
-	}
-	backend->renderer = renderer;
-
-	const struct wlr_drm_format_set *formats =
-		wlr_renderer_get_dmabuf_render_formats(backend->renderer);
-	if (formats == NULL) {
-		wlr_log(WLR_ERROR, "Failed to get available DMA-BUF formats from renderer");
-		return false;
-	}
-	const struct wlr_drm_format *format =
-		wlr_drm_format_set_get(formats, DRM_FORMAT_XRGB8888);
-	if (format == NULL) {
-		wlr_log(WLR_ERROR, "Renderer doesn't support XRGB8888");
-		return false;
-	}
-	backend->format = wlr_drm_format_dup(format);
+	backend->drm_fd = drm_fd;
 
 	backend->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &backend->display_destroy);
-
-	wl_list_init(&backend->renderer_destroy.link);
-
-	return true;
 }
 
 static int open_drm_render_node(void) {
@@ -208,38 +158,25 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
 		return NULL;
 	}
 
-	backend->drm_fd = open_drm_render_node();
-	if (backend->drm_fd < 0) {
-		wlr_log(WLR_ERROR, "Failed to open DRM render node");
-		goto error_drm_fd;
-	}
-
-	int drm_fd = fcntl(backend->drm_fd, F_DUPFD_CLOEXEC, 0);
+	int drm_fd = open_drm_render_node();
 	if (drm_fd < 0) {
-		wlr_log_errno(WLR_ERROR, "fcntl(F_DUPFD_CLOEXEC) failed");
-		goto error_dup;
+		wlr_log(WLR_ERROR, "Failed to open DRM render node");
+		free(backend);
+		return NULL;
 	}
 
-	struct wlr_gbm_allocator *gbm_alloc = wlr_gbm_allocator_create(drm_fd);
-	if (gbm_alloc == NULL) {
-		wlr_log(WLR_ERROR, "Failed to create GBM allocator");
-		close(drm_fd);
-		goto error_dup;
-	}
-
-	if (!backend_init(backend, display, &gbm_alloc->base, NULL)) {
-		goto error_init;
-	}
+	backend_init(backend, display, drm_fd);
 
 	return &backend->backend;
+}
 
-error_init:
-	wlr_allocator_destroy(&gbm_alloc->base);
-error_dup:
-	close(backend->drm_fd);
-error_drm_fd:
-	free(backend);
-	return NULL;
+static void backend_handle_renderer_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_backend *backend =
+		wl_container_of(listener, backend, renderer_destroy);
+	wl_list_remove(&backend->renderer_destroy.link);
+	wl_list_init(&backend->renderer_destroy.link);
+	backend->renderer = NULL;
 }
 
 struct wlr_backend *wlr_headless_backend_create_with_renderer(
@@ -252,43 +189,30 @@ struct wlr_backend *wlr_headless_backend_create_with_renderer(
 		wlr_log(WLR_ERROR, "Failed to allocate wlr_headless_backend");
 		return NULL;
 	}
-	backend->has_parent_renderer = true;
 
-	backend->drm_fd = wlr_renderer_get_drm_fd(renderer);
+	int drm_fd = wlr_renderer_get_drm_fd(renderer);
 	if (backend->drm_fd < 0) {
 		wlr_log(WLR_ERROR, "Failed to get DRM device FD from renderer");
-		goto error_drm_fd;
+		free(backend);
+		return NULL;
 	}
 
-	int drm_fd = fcntl(backend->drm_fd, F_DUPFD_CLOEXEC, 0);
+	drm_fd = fcntl(backend->drm_fd, F_DUPFD_CLOEXEC, 0);
 	if (drm_fd < 0) {
 		wlr_log_errno(WLR_ERROR, "fcntl(F_DUPFD_CLOEXEC) failed");
-		goto error_dup;
+		free(backend);
+		return NULL;
 	}
 
-	struct wlr_gbm_allocator *gbm_alloc = wlr_gbm_allocator_create(drm_fd);
-	if (gbm_alloc == NULL) {
-		wlr_log(WLR_ERROR, "Failed to create GBM allocator");
-		close(drm_fd);
-		goto error_dup;
-	}
+	backend_init(backend, display, drm_fd);
 
-	if (!backend_init(backend, display, &gbm_alloc->base, renderer)) {
-		goto error_init;
-	}
-
-	backend->renderer_destroy.notify = handle_renderer_destroy;
-	wl_signal_add(&renderer->events.destroy, &backend->renderer_destroy);
+	// We need to prevent wlr_backend from creating its own renderer for
+	// backwards compatibility. TODO: break the API and stop doing it.
+	backend->backend.renderer = renderer;
+	backend->backend.renderer_destroy.notify = backend_handle_renderer_destroy;
+	wl_signal_add(&renderer->events.destroy, &backend->backend.renderer_destroy);
 
 	return &backend->backend;
-
-error_init:
-	wlr_allocator_destroy(&gbm_alloc->base);
-error_dup:
-	close(backend->drm_fd);
-error_drm_fd:
-	free(backend);
-	return NULL;
 }
 
 bool wlr_backend_is_headless(struct wlr_backend *backend) {
