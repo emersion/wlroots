@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <libinput.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,9 +16,11 @@
 #include <wlr/backend/session.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/config.h>
+#include <wlr/render/wlr_renderer.h>
 #include <wlr/util/log.h>
 #include "backend/backend.h"
 #include "backend/multi.h"
+#include "render/gbm_allocator.h"
 
 #if WLR_HAS_X11_BACKEND
 #include <wlr/backend/x11.h>
@@ -30,6 +33,7 @@ void wlr_backend_init(struct wlr_backend *backend,
 	wl_signal_init(&backend->events.destroy);
 	wl_signal_init(&backend->events.new_input);
 	wl_signal_init(&backend->events.new_output);
+	wl_list_init(&backend->renderer_destroy.link);
 }
 
 bool wlr_backend_start(struct wlr_backend *backend) {
@@ -44,6 +48,10 @@ void wlr_backend_destroy(struct wlr_backend *backend) {
 		return;
 	}
 
+	wl_list_remove(&backend->renderer_destroy.link);
+	wlr_renderer_destroy(backend->renderer);
+	wlr_allocator_destroy(backend->allocator);
+
 	if (backend->impl && backend->impl->destroy) {
 		backend->impl->destroy(backend);
 	} else {
@@ -51,9 +59,72 @@ void wlr_backend_destroy(struct wlr_backend *backend) {
 	}
 }
 
+static bool backend_create_allocator(struct wlr_backend *backend) {
+	if (backend->allocator != NULL) {
+		return true;
+	}
+
+	int drm_fd = backend_get_drm_fd(backend);
+	if (drm_fd < 0) {
+		wlr_log(WLR_ERROR, "Failed to get backend DRM FD");
+		return false;
+	}
+
+	drm_fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 0);
+	if (drm_fd < 0) {
+		wlr_log_errno(WLR_ERROR, "fcntl(F_DUPFD_CLOEXEC) failed");
+		return false;
+	}
+
+	struct wlr_gbm_allocator *gbm_alloc = wlr_gbm_allocator_create(drm_fd);
+	if (gbm_alloc == NULL) {
+		wlr_log(WLR_ERROR, "Failed to create GBM allocator");
+		return false;
+	}
+
+	backend->allocator = &gbm_alloc->base;
+
+	return true;
+}
+
+static void backend_handle_renderer_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_backend *backend =
+		wl_container_of(listener, backend, renderer_destroy);
+	wl_list_remove(&backend->renderer_destroy.link);
+	wl_list_init(&backend->renderer_destroy.link);
+	backend->renderer = NULL;
+}
+
+static bool backend_create_renderer(struct wlr_backend *backend) {
+	if (backend->renderer != NULL) {
+		return true;
+	}
+
+	struct wlr_renderer *renderer = wlr_renderer_autocreate(backend);
+	if (renderer == NULL) {
+		wlr_log(WLR_ERROR, "Failed to create renderer");
+		return false;
+	}
+
+	backend->renderer = renderer;
+
+	backend->renderer_destroy.notify = backend_handle_renderer_destroy;
+	wl_signal_add(&renderer->events.destroy, &backend->renderer_destroy);
+
+	return true;
+}
+
 struct wlr_renderer *wlr_backend_get_renderer(struct wlr_backend *backend) {
 	if (backend->impl->get_renderer) {
 		return backend->impl->get_renderer(backend);
+	}
+	if (backend->impl->get_drm_fd) {
+		if (!backend_create_renderer(backend)) {
+			wlr_log(WLR_ERROR, "Failed to create backend renderer");
+			return NULL;
+		}
+		return backend->renderer;
 	}
 	return NULL;
 }
@@ -77,6 +148,13 @@ int backend_get_drm_fd(struct wlr_backend *backend) {
 		return -1;
 	}
 	return backend->impl->get_drm_fd(backend);
+}
+
+struct wlr_allocator *backend_get_allocator(struct wlr_backend *backend) {
+	if (!backend_create_allocator(backend)) {
+		return NULL;
+	}
+	return backend->allocator;
 }
 
 static size_t parse_outputs_env(const char *name) {
