@@ -90,6 +90,11 @@ struct wlr_output_impl {
 	 * size for the cursor may fail.
 	 */
 	void (*get_cursor_size)(struct wlr_output *output, int *width, int *height);
+	/**
+	 * Get the list of DMA-BUF formats suitable for the primary buffer.
+	 */
+	const struct wlr_drm_format_set *(*get_dmabuf_primary_formats)(
+		struct wlr_output *output);
 };
 
 /**
