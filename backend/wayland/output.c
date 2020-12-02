@@ -477,6 +477,12 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 	return true;
 }
 
+static const struct wlr_drm_format_set *output_get_dmabuf_cursor_formats(
+		struct wlr_output *wlr_output) {
+	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
+	return &output->backend->linux_dmabuf_v1_formats;
+}
+
 static void output_destroy(struct wlr_output *wlr_output) {
 	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
 	if (output == NULL) {
@@ -536,6 +542,7 @@ static const struct wlr_output_impl output_impl = {
 	.rollback_render = output_rollback_render,
 	.set_cursor = output_set_cursor,
 	.move_cursor = output_move_cursor,
+	.get_dmabuf_cursor_formats = output_get_dmabuf_cursor_formats,
 };
 
 bool wlr_output_is_wl(struct wlr_output *wlr_output) {
