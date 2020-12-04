@@ -67,7 +67,7 @@ void finish_drm_renderer(struct wlr_drm_renderer *renderer) {
 	gbm_device_destroy(renderer->gbm);
 }
 
-static bool init_drm_surface(struct wlr_drm_surface *surf,
+bool init_drm_surface(struct wlr_drm_surface *surf,
 		struct wlr_drm_renderer *renderer, uint32_t width, uint32_t height,
 		const struct wlr_drm_format *drm_format) {
 	if (surf->width == width && surf->height == height) {
@@ -131,7 +131,7 @@ void drm_surface_unset_current(struct wlr_drm_surface *surf) {
 	surf->back_buffer = NULL;
 }
 
-static struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
+struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
 		struct wlr_buffer *buffer) {
 	struct wlr_renderer *renderer = surf->renderer->wlr_rend;
 
