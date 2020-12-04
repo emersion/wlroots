@@ -29,5 +29,11 @@ struct wlr_gbm_allocator {
  * Takes ownership over the FD.
  */
 struct wlr_gbm_allocator *wlr_gbm_allocator_create(int drm_fd);
+/**
+ * Upcasts a generic allocator to a GBM allocator.
+ *
+ * Returns NULL if the allocator isn't a GBM allocator.
+ */
+struct wlr_gbm_allocator *wlr_gbm_allocator_get(struct wlr_allocator *alloc);
 
 #endif

@@ -153,6 +153,13 @@ static const struct wlr_buffer_impl buffer_impl = {
 
 static const struct wlr_allocator_interface allocator_impl;
 
+struct wlr_gbm_allocator *wlr_gbm_allocator_get(struct wlr_allocator *alloc) {
+	if (alloc->impl != &allocator_impl) {
+		return NULL;
+	}
+	return (struct wlr_gbm_allocator *)alloc;
+}
+
 static struct wlr_gbm_allocator *get_gbm_alloc_from_alloc(
 		struct wlr_allocator *alloc) {
 	assert(alloc->impl == &allocator_impl);
