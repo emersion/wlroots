@@ -280,6 +280,16 @@ bool init_drm_resources(struct wlr_drm_backend *drm) {
 
 	drmModeFreeResources(res);
 
+	// Hack: create fake cursor planes for drivers not exposing a real one
+	for (size_t i = 0; i < drm->num_crtcs; ++i) {
+		struct wlr_drm_crtc *crtc = &drm->crtcs[i];
+		if (crtc->cursor) {
+			continue;
+		}
+		crtc->cursor = calloc(1, sizeof(struct wlr_drm_plane));
+		wlr_drm_format_set_add(&crtc->cursor->formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+	}
+
 	return true;
 
 error_crtcs:
