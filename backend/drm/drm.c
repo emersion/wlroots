@@ -322,12 +322,6 @@ static struct wlr_drm_connector *get_drm_connector_from_output(
 	return (struct wlr_drm_connector *)wlr_output;
 }
 
-static bool drm_connector_attach_render(struct wlr_output *output,
-		int *buffer_age) {
-	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
-	return drm_surface_make_current(&conn->crtc->primary->surf, buffer_age);
-}
-
 static void drm_plane_set_committed(struct wlr_drm_plane *plane) {
 	drm_fb_move(&plane->queued_fb, &plane->pending_fb);
 
@@ -467,21 +461,12 @@ static bool drm_connector_commit_buffer(struct wlr_output *output) {
 	struct wlr_drm_plane *plane = crtc->primary;
 
 	assert(output->pending.committed & WLR_OUTPUT_STATE_BUFFER);
-	switch (output->pending.buffer_type) {
-	case WLR_OUTPUT_STATE_BUFFER_RENDER:
-		if (!drm_plane_lock_surface(plane, drm)) {
-			wlr_drm_conn_log(conn, WLR_ERROR, "drm_plane_lock_surface failed");
-			return false;
-		}
-		break;
-	case WLR_OUTPUT_STATE_BUFFER_SCANOUT:;
-		struct wlr_buffer *buffer = output->pending.buffer;
-		if (!drm_fb_import(&plane->pending_fb, drm, buffer,
-				&crtc->primary->formats)) {
-			wlr_log(WLR_ERROR, "Failed to import buffer");
-			return false;
-		}
-		break;
+	assert(output->pending.buffer_type == WLR_OUTPUT_STATE_BUFFER_SCANOUT);
+
+	struct wlr_buffer *buffer = output->pending.buffer;
+	if (!drm_fb_import(&plane->pending_fb, drm, buffer,
+			&crtc->primary->formats)) {
+		return false;
 	}
 
 	if (!drm_crtc_page_flip(conn)) {
@@ -566,11 +551,6 @@ static bool drm_connector_commit(struct wlr_output *output) {
 	}
 
 	return true;
-}
-
-static void drm_connector_rollback_render(struct wlr_output *output) {
-	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
-	return drm_surface_unset_current(&conn->crtc->primary->surf);
 }
 
 size_t drm_crtc_get_gamma_lut_size(struct wlr_drm_backend *drm,
@@ -1062,10 +1042,8 @@ static const struct wlr_output_impl output_impl = {
 	.set_cursor = drm_connector_set_cursor,
 	.move_cursor = drm_connector_move_cursor,
 	.destroy = drm_connector_destroy_output,
-	.attach_render = drm_connector_attach_render,
 	.test = drm_connector_test,
 	.commit = drm_connector_commit,
-	.rollback_render = drm_connector_rollback_render,
 	.get_gamma_size = drm_connector_get_gamma_size,
 	.export_dmabuf = drm_connector_export_dmabuf,
 	.get_dmabuf_cursor_formats = drm_connector_get_dmabuf_cursor_formats,
