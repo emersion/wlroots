@@ -1040,6 +1040,21 @@ static void drm_connector_get_cursor_size(struct wlr_output *output,
 	*height = (int)drm->cursor_height;
 }
 
+static const struct wlr_drm_format_set *drm_connector_get_primary_formats(
+		struct wlr_output *output, uint32_t buffer_caps) {
+	if (!(buffer_caps & WLR_BUFFER_CAP_DMABUF)) {
+		return NULL;
+	}
+	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
+	if (!conn->crtc) {
+		return false;
+	}
+	if (conn->backend->parent) {
+		return &conn->backend->mgpu_formats;
+	}
+	return &conn->crtc->primary->formats;
+}
+
 static const struct wlr_output_impl output_impl = {
 	.set_cursor = drm_connector_set_cursor,
 	.move_cursor = drm_connector_move_cursor,
@@ -1052,6 +1067,7 @@ static const struct wlr_output_impl output_impl = {
 	.export_dmabuf = drm_connector_export_dmabuf,
 	.get_cursor_formats = drm_connector_get_cursor_formats,
 	.get_cursor_size = drm_connector_get_cursor_size,
+	.get_primary_formats = drm_connector_get_primary_formats,
 };
 
 bool wlr_output_is_drm(struct wlr_output *output) {
