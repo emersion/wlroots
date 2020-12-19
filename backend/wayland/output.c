@@ -98,37 +98,7 @@ static bool output_set_custom_mode(struct wlr_output *wlr_output,
 		int32_t width, int32_t height, int32_t refresh) {
 	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
 
-	if (wlr_output->width != width || wlr_output->height != height) {
-		struct wlr_swapchain *swapchain = wlr_swapchain_create(
-			output->backend->allocator, width, height, output->backend->format);
-		if (swapchain == NULL) {
-			return false;
-		}
-		wlr_swapchain_destroy(output->swapchain);
-		output->swapchain = swapchain;
-	}
-
 	wlr_output_update_custom_mode(&output->wlr_output, width, height, 0);
-	return true;
-}
-
-static bool output_attach_render(struct wlr_output *wlr_output,
-		int *buffer_age) {
-	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
-
-	wlr_buffer_unlock(output->back_buffer);
-	output->back_buffer = wlr_swapchain_acquire(output->swapchain, buffer_age);
-	if (!output->back_buffer) {
-		wlr_log(WLR_ERROR, "Failed to acquire swapchain buffer");
-		return false;
-	}
-
-	if (!wlr_renderer_bind_buffer(output->backend->renderer,
-			output->back_buffer)) {
-		wlr_log(WLR_ERROR, "Failed to bind buffer to renderer");
-		return false;
-	}
-
 	return true;
 }
 
@@ -282,6 +252,9 @@ static bool output_commit(struct wlr_output *wlr_output) {
 	}
 
 	if (wlr_output->pending.committed & WLR_OUTPUT_STATE_BUFFER) {
+		assert(wlr_output->pending.buffer_type ==
+			WLR_OUTPUT_STATE_BUFFER_SCANOUT);
+
 		struct wp_presentation_feedback *wp_feedback = NULL;
 		if (output->backend->presentation != NULL) {
 			wp_feedback = wp_presentation_feedback(output->backend->presentation,
@@ -301,19 +274,7 @@ static bool output_commit(struct wlr_output *wlr_output) {
 		output->frame_callback = wl_surface_frame(output->surface);
 		wl_callback_add_listener(output->frame_callback, &frame_listener, output);
 
-		struct wlr_buffer *wlr_buffer = NULL;
-		switch (wlr_output->pending.buffer_type) {
-		case WLR_OUTPUT_STATE_BUFFER_RENDER:
-			assert(output->back_buffer != NULL);
-			wlr_buffer = output->back_buffer;
-
-			wlr_renderer_bind_buffer(output->backend->renderer, NULL);
-			break;
-		case WLR_OUTPUT_STATE_BUFFER_SCANOUT:;
-			wlr_buffer = wlr_output->pending.buffer;
-			break;
-		}
-
+		struct wlr_buffer *wlr_buffer = wlr_output->pending.buffer;
 		struct wlr_wl_buffer *buffer =
 			get_or_create_wl_buffer(output->backend, wlr_buffer);
 		if (buffer == NULL) {
@@ -338,11 +299,6 @@ static bool output_commit(struct wlr_output *wlr_output) {
 
 		wl_surface_commit(output->surface);
 
-		wlr_buffer_unlock(output->back_buffer);
-		output->back_buffer = NULL;
-
-		wlr_swapchain_set_buffer_submitted(output->swapchain, wlr_buffer);
-
 		if (wp_feedback != NULL) {
 			struct wlr_wl_presentation_feedback *feedback =
 				calloc(1, sizeof(*feedback));
@@ -365,11 +321,6 @@ static bool output_commit(struct wlr_output *wlr_output) {
 	wl_display_flush(output->backend->remote_display);
 
 	return true;
-}
-
-static void output_rollback_render(struct wlr_output *wlr_output) {
-	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
-	wlr_renderer_bind_buffer(output->backend->renderer, NULL);
 }
 
 static bool output_set_cursor(struct wlr_output *wlr_output,
@@ -440,8 +391,6 @@ static void output_destroy(struct wlr_output *wlr_output) {
 		presentation_feedback_destroy(feedback);
 	}
 
-	wlr_buffer_unlock(output->back_buffer);
-	wlr_swapchain_destroy(output->swapchain);
 	if (output->zxdg_toplevel_decoration_v1) {
 		zxdg_toplevel_decoration_v1_destroy(output->zxdg_toplevel_decoration_v1);
 	}
@@ -470,10 +419,8 @@ static bool output_move_cursor(struct wlr_output *_output, int x, int y) {
 
 static const struct wlr_output_impl output_impl = {
 	.destroy = output_destroy,
-	.attach_render = output_attach_render,
 	.test = output_test,
 	.commit = output_commit,
-	.rollback_render = output_rollback_render,
 	.set_cursor = output_set_cursor,
 	.move_cursor = output_move_cursor,
 	.get_dmabuf_cursor_formats = output_get_dmabuf_cursor_formats,
@@ -593,12 +540,6 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 	xdg_toplevel_add_listener(output->xdg_toplevel,
 			&xdg_toplevel_listener, output);
 	wl_surface_commit(output->surface);
-
-	output->swapchain = wlr_swapchain_create(output->backend->allocator,
-		wlr_output->width, wlr_output->height, output->backend->format);
-	if (output->swapchain == NULL) {
-		goto error;
-	}
 
 	wl_display_roundtrip(output->backend->remote_display);
 
