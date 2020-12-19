@@ -465,6 +465,12 @@ static bool output_move_cursor(struct wlr_output *_output, int x, int y) {
 	return true;
 }
 
+static const struct wlr_drm_format_set *output_get_dmabuf_primary_formats(
+		struct wlr_output *wlr_output) {
+	struct wlr_x11_output *output = get_x11_output_from_output(wlr_output);
+	return &output->x11->primary_dmabuf_formats;
+}
+
 static const struct wlr_output_impl output_impl = {
 	.destroy = output_destroy,
 	.attach_render = output_attach_render,
@@ -473,6 +479,7 @@ static const struct wlr_output_impl output_impl = {
 	.rollback_render = output_rollback_render,
 	.set_cursor = output_set_cursor,
 	.move_cursor = output_move_cursor,
+	.get_dmabuf_primary_formats = output_get_dmabuf_primary_formats,
 };
 
 struct wlr_output *wlr_x11_output_create(struct wlr_backend *backend) {
