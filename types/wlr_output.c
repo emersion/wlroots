@@ -231,13 +231,6 @@ void wlr_output_update_custom_mode(struct wlr_output *output, int32_t width,
 
 	output->refresh = refresh;
 
-	if (output->swapchain != NULL &&
-			(output->swapchain->width != output->width ||
-			output->swapchain->height != output->height)) {
-		wlr_swapchain_destroy(output->swapchain);
-		output->swapchain = NULL;
-	}
-
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &output->resources) {
 		send_current_mode(resource);
@@ -474,8 +467,32 @@ static void output_state_clear_buffer(struct wlr_output_state *state) {
 static struct wlr_drm_format *output_pick_format(struct wlr_output *output,
 		const struct wlr_drm_format_set *display_formats);
 
+static void output_pending_resolution(struct wlr_output *output, int *width,
+		int *height) {
+	if (output->pending.committed & WLR_OUTPUT_STATE_MODE) {
+		switch (output->pending.mode_type) {
+		case WLR_OUTPUT_STATE_MODE_FIXED:
+			*width = output->pending.mode->width;
+			*height = output->pending.mode->height;
+			return;
+		case WLR_OUTPUT_STATE_MODE_CUSTOM:
+			*width = output->pending.custom_mode.width;
+			*height = output->pending.custom_mode.height;
+			return;
+		}
+		abort();
+	} else {
+		*width = output->width;
+		*height = output->height;
+	}
+}
+
 static bool output_create_swapchain(struct wlr_output *output) {
-	if (output->swapchain != NULL) {
+	int width, height;
+	output_pending_resolution(output, &width, &height);
+
+	if (output->swapchain != NULL && output->swapchain->width == width &&
+			output->swapchain->height == height) {
 		return true;
 	}
 
@@ -503,8 +520,8 @@ static bool output_create_swapchain(struct wlr_output *output) {
 	wlr_log(WLR_DEBUG, "Choosing primary buffer format 0x%"PRIX32" for output '%s'",
 		format->format, output->name);
 
-	output->swapchain = wlr_swapchain_create(allocator, output->width,
-		output->height, format);
+	wlr_swapchain_destroy(output->swapchain);
+	output->swapchain = wlr_swapchain_create(allocator, width, height, format);
 	free(format);
 	if (output->swapchain == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create output swapchain");
@@ -621,24 +638,21 @@ static void output_state_clear(struct wlr_output_state *state) {
 	state->committed = 0;
 }
 
-static void output_pending_resolution(struct wlr_output *output, int *width,
-		int *height) {
-	if (output->pending.committed & WLR_OUTPUT_STATE_MODE) {
-		switch (output->pending.mode_type) {
-		case WLR_OUTPUT_STATE_MODE_FIXED:
-			*width = output->pending.mode->width;
-			*height = output->pending.mode->height;
-			return;
-		case WLR_OUTPUT_STATE_MODE_CUSTOM:
-			*width = output->pending.custom_mode.width;
-			*height = output->pending.custom_mode.height;
-			return;
-		}
-		abort();
-	} else {
-		*width = output->width;
-		*height = output->height;
+static bool output_render_black_frame(struct wlr_output *output) {
+	int pending_width, pending_height;
+	output_pending_resolution(output, &pending_width, &pending_height);
+
+	if (!wlr_output_attach_render(output, NULL)) {
+		return false;
 	}
+
+	struct wlr_renderer *renderer = wlr_backend_get_renderer(output->backend);
+	assert(renderer != NULL);
+	wlr_renderer_begin(renderer, pending_width, pending_height);
+	wlr_renderer_clear(renderer, (float[]){ 0.0, 0.0, 0.0, 1.0 });
+	wlr_renderer_end(renderer);
+
+	return true;
 }
 
 static bool output_basic_test(struct wlr_output *output) {
@@ -721,6 +735,13 @@ bool wlr_output_commit(struct wlr_output *output) {
 			output->idle_frame != NULL) {
 		wl_event_source_remove(output->idle_frame);
 		output->idle_frame = NULL;
+	}
+
+	if ((output->pending.committed & WLR_OUTPUT_STATE_MODE) &&
+			!(output->pending.committed & WLR_OUTPUT_STATE_BUFFER)) {
+		if (!output_render_black_frame(output)) {
+			return false;
+		}
 	}
 
 	struct timespec now;
