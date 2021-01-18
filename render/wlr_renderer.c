@@ -4,6 +4,7 @@
 #include <gbm.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/gles2.h>
+#include <wlr/render/pixman.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_matrix.h>
@@ -281,6 +282,8 @@ struct wlr_renderer *wlr_renderer_autocreate(struct wlr_backend *backend) {
 		wlr_log(WLR_ERROR, "Failed to get DRM FD from backend");
 		return NULL;
 	}
+
+	return wlr_pixman_renderer_create(drm_fd);
 
 	return wlr_renderer_autocreate_with_drm_fd(drm_fd);
 }
