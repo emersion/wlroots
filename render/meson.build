@@ -13,3 +13,4 @@ wlr_files += files(
 )
 
 subdir('gles2')
+subdir('pixman')
