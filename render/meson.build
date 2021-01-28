@@ -8,6 +8,7 @@ wlr_files += files(
 	'swapchain.c',
 	'wlr_renderer.c',
 	'wlr_texture.c',
+	'drm_dumb_allocator.c',
 )
 
 subdir('gles2')
