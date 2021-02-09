@@ -185,6 +185,28 @@ static const struct wl_drm_listener legacy_drm_listener = {
 	.capabilities = legacy_drm_handle_capabilities,
 };
 
+static uint32_t convert_wl_shm_format_to_drm(enum wl_shm_format format) {
+	switch (format) {
+	case WL_SHM_FORMAT_ARGB8888:
+		return DRM_FORMAT_ARGB8888;
+	case WL_SHM_FORMAT_XRGB8888:
+		return DRM_FORMAT_XRGB8888;
+	default:
+		return format; // all other formats match DRM
+	}
+}
+
+static void shm_handle_format(void *data, struct wl_shm *shm,
+		uint32_t shm_format) {
+	struct wlr_wl_backend *wl = data;
+	uint32_t drm_format = convert_wl_shm_format_to_drm(shm_format);
+	wlr_drm_format_set_add(&wl->shm_formats, drm_format, DRM_FORMAT_MOD_INVALID);
+}
+
+static const struct wl_shm_listener shm_listener = {
+	.format = shm_handle_format,
+};
+
 static void registry_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *iface, uint32_t version) {
 	struct wlr_wl_backend *wl = data;
@@ -228,6 +250,9 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(iface, wl_drm_interface.name) == 0) {
 		wl->legacy_drm = wl_registry_bind(registry, name, &wl_drm_interface, 1);
 		wl_drm_add_listener(wl->legacy_drm, &legacy_drm_listener, wl);
+	} else if (strcmp(iface, wl_shm_interface.name) == 0) {
+		wl->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+		wl_shm_add_listener(wl->shm, &shm_listener, wl);
 	}
 }
 
@@ -297,6 +322,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 	wlr_allocator_destroy(wl->allocator);
 	close(wl->drm_fd);
 
+	wlr_drm_format_set_finish(&wl->shm_formats);
 	wlr_drm_format_set_finish(&wl->linux_dmabuf_v1_formats);
 
 	struct wlr_wl_buffer *buffer, *tmp_buffer;
@@ -316,6 +342,9 @@ static void backend_destroy(struct wlr_backend *backend) {
 	}
 	if (wl->zwp_linux_dmabuf_v1) {
 		zwp_linux_dmabuf_v1_destroy(wl->zwp_linux_dmabuf_v1);
+	}
+	if (wl->shm) {
+		wl_shm_destroy(wl->shm);
 	}
 	if (wl->zwp_relative_pointer_manager_v1) {
 		zwp_relative_pointer_manager_v1_destroy(wl->zwp_relative_pointer_manager_v1);
