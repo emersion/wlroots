@@ -6,8 +6,7 @@
 
 struct wlr_shm_buffer {
 	struct wlr_buffer base;
-
-	int fd;
+	struct wlr_shm_attributes shm;
 };
 
 struct wlr_shm_allocator {

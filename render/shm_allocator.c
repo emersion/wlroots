@@ -15,12 +15,20 @@ static struct wlr_shm_buffer *shm_buffer_from_buffer(
 
 static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
 	struct wlr_shm_buffer *buffer = shm_buffer_from_buffer(wlr_buffer);
-	close(buffer->fd);
+	close(buffer->shm.fd);
 	free(buffer);
+}
+
+static bool buffer_get_shm(struct wlr_buffer *wlr_buffer,
+		struct wlr_shm_attributes *shm) {
+	struct wlr_shm_buffer *buffer = shm_buffer_from_buffer(wlr_buffer);
+	memcpy(shm, &buffer->shm, sizeof(*shm));
+	return true;
 }
 
 static const struct wlr_buffer_impl buffer_impl = {
 	.destroy = buffer_destroy,
+	.get_shm = buffer_get_shm,
 };
 
 static struct wlr_buffer *allocator_create_buffer(
@@ -35,11 +43,17 @@ static struct wlr_buffer *allocator_create_buffer(
 	// TODO: consider using a single file for multiple buffers
 	int stride = width; // TODO: align
 	size_t size = stride * height;
-	buffer->fd = allocate_shm_file(size);
-	if (buffer->fd < 0) {
+	buffer->shm.fd = allocate_shm_file(size);
+	if (buffer->shm.fd < 0) {
 		free(buffer);
 		return NULL;
 	}
+
+	buffer->shm.format = format->format;
+	buffer->shm.width = width;
+	buffer->shm.height = height;
+	buffer->shm.stride = stride;
+	buffer->shm.offset = 0;
 
 	return &buffer->base;
 }
