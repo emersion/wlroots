@@ -3,27 +3,123 @@
 #include <wlr/render/interface.h>
 #include <wlr/util/log.h>
 
+#include <pixman.h>
+#include <wayland-server.h>
+#include <drm_fourcc.h>
+
 #include <stdlib.h>
 #include <assert.h>
 
 static const struct wlr_renderer_impl renderer_impl;
 
-struct wlr_pixman_renderer *pixman_get_renderer(
+static struct wlr_pixman_renderer *get_renderer(
 		struct wlr_renderer *wlr_renderer) {
 	assert(wlr_renderer->impl == &renderer_impl);
 	return (struct wlr_pixman_renderer *)wlr_renderer;
 }
 
+static struct wlr_pixman_buffer *get_buffer(
+		struct wlr_pixman_renderer *renderer, struct wlr_buffer *wlr_buffer) {
+	struct wlr_pixman_buffer *buffer;
+	wl_list_for_each(buffer, &renderer->buffers, link) {
+		if (buffer->buffer == wlr_buffer) {
+			return buffer;
+		}
+	}
+	return NULL;
+}
+
+static void handle_destroy_buffer(struct wl_listener *listener, void *data) {
+	struct wlr_pixman_buffer *buffer =
+		wl_container_of(listener, buffer, buffer_destroy);
+	wl_list_remove(&buffer->link);
+	wl_list_remove(&buffer->buffer_destroy.link);
+
+	pixman_image_unref(buffer->image);
+
+	free(buffer);
+}
+
+static struct wlr_pixman_buffer *create_buffer(
+		struct wlr_pixman_renderer *renderer, struct wlr_buffer *wlr_buffer) {
+	struct wlr_pixman_buffer *buffer = calloc(1, sizeof(*buffer));
+	if (buffer == NULL) {
+		wlr_log_errno(WLR_ERROR, "Allocation failed");
+		return NULL;
+	}
+	buffer->buffer = wlr_buffer;
+	buffer->renderer = renderer;
+
+	struct wlr_dmabuf_attributes dmabuf = {0};
+	if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+		goto error_buffer;
+	}
+
+	uint32_t format;
+	switch (dmabuf.format) {
+	case DRM_FORMAT_XRGB8888:
+		format = PIXMAN_x8r8g8b8;
+		break;
+	case DRM_FORMAT_ARGB8888:
+		format = PIXMAN_a8r8g8b8;
+		break;
+	default:
+		wlr_log(WLR_ERROR, "Unsupported DRM format 0x%x\n", dmabuf.format);
+		goto error_buffer;
+	}
+
+	// TODO: ensure wlr_buffer is a drm dumb buffer
+	struct wlr_drm_dumb_buffer *drm_dumb_buffer =
+		(struct wlr_drm_dumb_buffer *)wlr_buffer;
+
+	buffer->image = pixman_image_create_bits(format, wlr_buffer->width,
+			wlr_buffer->height, drm_dumb_buffer->data,
+			drm_dumb_buffer->stride);
+	if (!buffer->image) {
+		wlr_log(WLR_ERROR, "Failed to allocate pixman image\n");
+		goto error_buffer;
+	}
+
+	buffer->buffer_destroy.notify = handle_destroy_buffer;
+	wl_signal_add(&wlr_buffer->events.destroy, &buffer->buffer_destroy);
+
+	wl_list_insert(&renderer->buffers, &buffer->link);
+
+	wlr_log(WLR_DEBUG, "Created pixman buffer %dx%d",
+		wlr_buffer->width, wlr_buffer->height);
+
+	return buffer;
+
+error_buffer:
+	free(buffer);
+	return NULL;
+}
+
 static void pixman_begin(struct wlr_renderer *wlr_renderer, uint32_t width,
 		uint32_t height) {
-	struct wlr_pixman_renderer *renderer = pixman_get_renderer(wlr_renderer);
-	(void)renderer;
-	assert(false && "todo pixman_begin");
+	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
+	renderer->viewport_width = width;
+	renderer->viewport_height = height;
 }
 
 static void pixman_clear(struct wlr_renderer *wlr_renderer,
 		const float color[static 4]) {
-	assert(false && "todo pixman_clear");
+	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
+	struct wlr_pixman_buffer *buffer = renderer->current_buffer;
+
+	const struct pixman_color colour = {
+		.red = color[0] * 0xFFFF,
+		.green = color[1] * 0xFFFF,
+		.blue = color[2] * 0xFFFF,
+		.alpha = color[3] * 0xFFFF,
+	};
+
+	pixman_image_t *fill = pixman_image_create_solid_fill(&colour);
+
+	pixman_image_composite32(PIXMAN_OP_SRC, fill, NULL, buffer->image, 0, 0, 0,
+			0, 0, 0, renderer->viewport_width, renderer->viewport_height);
+
+	pixman_image_unref(fill);
 }
 
 static void pixman_scissor(struct wlr_renderer *wlr_renderer,
@@ -61,7 +157,37 @@ static struct wlr_texture *pixman_texture_from_pixels(
 
 static const struct wlr_drm_format_set *pixman_get_dmabuf_render_formats(
 		struct wlr_renderer *wlr_renderer) {
-	assert(false && "todo pixman_get_dmabug_render_formats");
+	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
+	return &renderer->dmabuf_render_formats;
+}
+
+static bool pixman_bind_buffer(struct wlr_renderer *wlr_renderer,
+		struct wlr_buffer *wlr_buffer) {
+	wlr_log(WLR_INFO, "Pixman bind buffer");
+
+	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
+
+	if (renderer->current_buffer != NULL) {
+		wlr_buffer_unlock(renderer->current_buffer->buffer);
+		renderer->current_buffer = NULL;
+	}
+
+	if (wlr_buffer == NULL) {
+		return true;
+	}
+
+	struct wlr_pixman_buffer *buffer = get_buffer(renderer, wlr_buffer);
+	if (buffer == NULL) {
+		buffer = create_buffer(renderer, wlr_buffer);
+	}
+	if (buffer == NULL) {
+		return false;
+	}
+
+	wlr_buffer_lock(wlr_buffer);
+	renderer->current_buffer = buffer;
+
+	return true;
 }
 
 static const struct wlr_renderer_impl renderer_impl = {
@@ -74,22 +200,21 @@ static const struct wlr_renderer_impl renderer_impl = {
 	.get_shm_texture_formats = pixman_get_shm_texture_formats,
 	.texture_from_pixels = pixman_texture_from_pixels,
 	.get_dmabuf_render_formats = pixman_get_dmabuf_render_formats,
-/*
-	.destroy = pixman_destroy,
 	.bind_buffer = pixman_bind_buffer,
-	.end = pixman_end,
-	.resource_is_wl_drm_buffer = pixman_resource_is_wl_drm_buffer,
-	.wl_drm_buffer_get_size = pixman_wl_drm_buffer_get_size,
-	.get_dmabuf_texture_formats = pixman_get_dmabuf_texture_formats,
-	.get_dmabuf_render_formats = pixman_get_dmabuf_render_formats,
-	.preferred_read_format = pixman_preferred_read_format,
-	.read_pixels = pixman_read_pixels,
-	.texture_from_wl_drm = pixman_texture_from_wl_drm,
-	.texture_from_dmabuf = pixman_texture_from_dmabuf,
-	.init_wl_display = pixman_init_wl_display,
-	.blit_dmabuf = pixman_blit_dmabuf,
-*/
 };
+
+static void init_dmabuf_formats(struct wlr_pixman_renderer *renderer) {
+	static const int fmts[] = {
+		DRM_FORMAT_ARGB8888,
+		DRM_FORMAT_XRGB8888,
+	};
+
+	static const size_t len = sizeof(fmts) / sizeof(fmts[0]);
+	for (size_t i = 0; i < len; ++i) {
+		wlr_drm_format_set_add(&renderer->dmabuf_render_formats, fmts[i],
+				0);
+	}
+}
 
 struct wlr_renderer *wlr_pixman_renderer_create(int drm_fd) {
 	struct wlr_pixman_renderer *renderer =
@@ -97,9 +222,12 @@ struct wlr_renderer *wlr_pixman_renderer_create(int drm_fd) {
 	if (renderer == NULL) {
 		return NULL;
 	}
-	wlr_renderer_init(&renderer->wlr_renderer, &renderer_impl);
 
 	wlr_log(WLR_INFO, "Creating pixman renderer");
+	wlr_renderer_init(&renderer->wlr_renderer, &renderer_impl);
+	wl_list_init(&renderer->buffers);
+
+	init_dmabuf_formats(renderer);
 
 	return &renderer->wlr_renderer;
 }
