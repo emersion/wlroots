@@ -30,4 +30,12 @@ struct wlr_pixman_buffer {
 	struct wl_list link; // wlr_pixman_renderer.buffers
 };
 
+struct wlr_pixman_texture {
+	struct wlr_texture wlr_texture;
+	struct wlr_pixman_renderer *renderer;
+
+	pixman_image_t *image;
+	uint32_t format;
+};
+
 #endif

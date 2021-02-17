@@ -29,6 +29,72 @@ static struct wlr_pixman_buffer *get_buffer(
 	return NULL;
 }
 
+static const struct wlr_texture_impl texture_impl;
+
+static struct wlr_pixman_texture *get_texture(
+		struct wlr_texture *wlr_texture) {
+	assert(wlr_texture->impl == &texture_impl);
+	return (struct wlr_pixman_texture *)wlr_texture;
+}
+
+static bool texture_is_opaque(struct wlr_texture *wlr_texture) {
+	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
+
+	return texture->format == WL_SHM_FORMAT_XRGB8888;
+}
+
+static bool texture_write_pixels(struct wlr_texture *wlr_texture,
+		uint32_t stride, uint32_t width, uint32_t height,
+		uint32_t src_x, uint32_t src_y, uint32_t dst_x, uint32_t dst_y,
+		const void *data) {
+	assert(false && "todo texture_write_pixels");
+	return false;
+}
+
+static bool texture_to_dmabuf(struct wlr_texture *wlr_texture,
+		struct wlr_dmabuf_attributes *attribs) {
+	assert(false && "todo texture_to_dmabuf");
+	return false;
+}
+
+static void texture_destroy(struct wlr_texture *wlr_texture) {
+	if (wlr_texture == NULL) {
+		return;
+	}
+	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
+
+	pixman_image_unref(texture->image);
+	free(texture);
+}
+
+static const struct wlr_texture_impl texture_impl = {
+	.is_opaque = texture_is_opaque,
+	.write_pixels = texture_write_pixels,
+	.to_dmabuf = texture_to_dmabuf,
+	.destroy = texture_destroy,
+};
+
+static uint32_t get_pixman_format_from_wl(enum wl_shm_format wl_fmt) {
+	uint32_t fmt = 0;
+	switch(wl_fmt) {
+	case WL_SHM_FORMAT_ARGB8888:
+		fmt = PIXMAN_a8r8g8b8;
+		break;
+	case WL_SHM_FORMAT_XRGB8888:
+		fmt = PIXMAN_x8r8g8b8;
+		break;
+	default:
+		// TODO: wl_shm_format to string?
+		wlr_log(WLR_ERROR, "Unsupported wl_shm_format");
+		break;
+	}
+
+	return fmt;
+}
+
+struct wlr_pixman_texture *pixman_create_texture(
+		struct wlr_texture *wlr_texture, struct wlr_pixman_renderer *renderer);
+
 static void handle_destroy_buffer(struct wl_listener *listener, void *data) {
 	struct wlr_pixman_buffer *buffer =
 		wl_container_of(listener, buffer, buffer_destroy);
@@ -152,7 +218,30 @@ static const enum wl_shm_format *pixman_get_shm_texture_formats(
 static struct wlr_texture *pixman_texture_from_pixels(
 		struct wlr_renderer *wlr_renderer, enum wl_shm_format wl_fmt,
 		uint32_t stride, uint32_t width, uint32_t height, const void *data) {
-	assert(false && "todo pixman_texture_from_pixels");
+
+
+	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
+	struct wlr_pixman_texture *texture =
+		calloc(1, sizeof(struct wlr_pixman_texture));
+	if (texture == NULL) {
+		wlr_log(WLR_ERROR, "Failed to allocate pixman texture");
+		return NULL;
+	}
+
+	wlr_texture_init(&texture->wlr_texture, &texture_impl, width, height);
+	texture->renderer = renderer;
+	texture->format = get_pixman_format_from_wl(wl_fmt);
+	texture->image = pixman_image_create_bits_no_clear(texture->format,
+			width, height, (void*)data, stride);
+
+	if (!texture->image) {
+		wlr_log(WLR_ERROR, "Failed to create pixman image");
+		free(texture);
+		return NULL;
+	}
+
+
+	return &texture->wlr_texture;
 }
 
 static const struct wlr_drm_format_set *pixman_get_dmabuf_render_formats(
