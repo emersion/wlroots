@@ -16,7 +16,8 @@ struct wlr_drm_renderer {
 	struct gbm_device *gbm;
 
 	struct wlr_renderer *wlr_rend;
-	struct wlr_gbm_allocator *allocator;
+	//struct wlr_gbm_allocator *allocator;
+	struct wlr_drm_dumb_allocator *allocator;
 };
 
 struct wlr_drm_surface {

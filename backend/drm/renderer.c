@@ -14,7 +14,8 @@
 #include "backend/drm/drm.h"
 #include "backend/drm/util.h"
 #include "render/drm_format_set.h"
-#include "render/gbm_allocator.h"
+//#include "render/gbm_allocator.h"
+#include "render/drm_dumb_allocator.h"
 #include "render/swapchain.h"
 #include "render/wlr_renderer.h"
 
@@ -40,7 +41,8 @@ bool init_drm_renderer(struct wlr_drm_backend *drm,
 		goto error_wlr_rend;
 	}
 
-	renderer->allocator = wlr_gbm_allocator_create(alloc_fd);
+	//renderer->allocator = wlr_gbm_allocator_create(alloc_fd);
+	renderer->allocator = wlr_drm_dumb_allocator_create(alloc_fd);
 	if (renderer->allocator == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create allocator");
 		close(alloc_fd);
