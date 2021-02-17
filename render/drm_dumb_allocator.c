@@ -23,7 +23,6 @@ static struct wlr_drm_dumb_buffer *drm_dumb_buffer_from_buffer(
 }
 
 static void finish_buffer(struct wlr_drm_dumb_buffer *buf) {
-
 	if (buf->data) {
 		munmap(buf->data, buf->size);
 	}
@@ -116,6 +115,14 @@ create_err:
 	return NULL;
 }
 
+static bool buffer_get_data_ptr(struct wlr_buffer *wlr_buffer, void **data,
+		size_t *size) {
+	struct wlr_drm_dumb_buffer *buf = drm_dumb_buffer_from_buffer(wlr_buffer);
+	*data = buf->data;
+	*size = buf->size;
+	return true;
+}
+
 static bool buffer_get_dmabuf(struct wlr_buffer *wlr_buffer,
 		struct wlr_dmabuf_attributes *attribs) {
 	struct wlr_drm_dumb_buffer *buf = drm_dumb_buffer_from_buffer(wlr_buffer);
@@ -132,6 +139,7 @@ static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
 static const struct wlr_buffer_impl buffer_impl = {
 	.destroy = buffer_destroy,
 	.get_dmabuf = buffer_get_dmabuf,
+	.get_data_ptr = buffer_get_data_ptr,
 };
 
 static const struct wlr_allocator_interface allocator_impl;
