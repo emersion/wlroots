@@ -78,10 +78,22 @@ static uint32_t get_pixman_format_from_wl(enum wl_shm_format wl_fmt) {
 	uint32_t fmt = 0;
 	switch(wl_fmt) {
 	case WL_SHM_FORMAT_ARGB8888:
+	#if WLR_BIG_ENDIAN
 		fmt = PIXMAN_a8r8g8b8;
+	#elif WLR_LITTLE_ENDIAN
+		fmt = PIXMAN_b8g8r8a8;
+	#else
+	#error pixman endian error
+	#endif
 		break;
 	case WL_SHM_FORMAT_XRGB8888:
+	#if WLR_BIG_ENDIAN
 		fmt = PIXMAN_x8r8g8b8;
+	#elif WLR_LITTLE_ENDIAN
+		fmt = PIXMAN_b8g8r8x8;
+	#else
+	#error pixman endian error
+	#endif
 		break;
 	default:
 		// TODO: wl_shm_format to string?

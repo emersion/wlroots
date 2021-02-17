@@ -21,6 +21,18 @@ add_project_arguments([
 	'-DWLR_USE_UNSTABLE',
 ], language: 'c')
 
+if host_machine.endian() == 'big'
+	add_project_arguments([
+		'-DWLR_LITTLE_ENDIAN=0',
+		'-DWLR_BIG_ENDIAN=1'
+	],language: 'c')
+else
+	add_project_arguments([
+		'-DWLR_LITTLE_ENDIAN=1',
+		'-DWLR_BIG_ENDIAN=0'
+	],language: 'c')
+endif
+
 cc = meson.get_compiler('c')
 
 add_project_arguments(cc.get_supported_arguments([
