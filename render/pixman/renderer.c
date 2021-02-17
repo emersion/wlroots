@@ -147,19 +147,16 @@ static struct wlr_pixman_buffer *create_buffer(
 	}
 
 	void *data = NULL;
-	uint32_t size = 0;
+	size_t size = 0;
 	if (!wlr_buffer_get_data_ptr(wlr_buffer, &data, &size)) {
 		wlr_log(WLR_ERROR, "Failed to get buffer data");
 		goto error_buffer;
 	}
-	assert(size != 0);
-	assert(data);
 
 	uint32_t stride = size / wlr_buffer->height;
 
 	buffer->image = pixman_image_create_bits(format, wlr_buffer->width,
 			wlr_buffer->height, data, stride);
-	assert(buffer->image);
 	if (!buffer->image) {
 		wlr_log(WLR_ERROR, "Failed to allocate pixman image\n");
 		goto error_buffer;
@@ -320,11 +317,11 @@ static void init_dmabuf_formats(struct wlr_pixman_renderer *renderer) {
 	static const size_t len = sizeof(fmts) / sizeof(fmts[0]);
 	for (size_t i = 0; i < len; ++i) {
 		wlr_drm_format_set_add(&renderer->dmabuf_render_formats, fmts[i],
-				0);
+				DRM_FORMAT_MOD_LINEAR);
 	}
 }
 
-struct wlr_renderer *wlr_pixman_renderer_create(int drm_fd) {
+struct wlr_renderer *wlr_pixman_renderer_create(void) {
 	struct wlr_pixman_renderer *renderer =
 		calloc(1, sizeof(struct wlr_pixman_renderer));
 	if (renderer == NULL) {
