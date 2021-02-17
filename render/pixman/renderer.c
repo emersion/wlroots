@@ -134,13 +134,20 @@ static struct wlr_pixman_buffer *create_buffer(
 		goto error_buffer;
 	}
 
-	// TODO: ensure wlr_buffer is a drm dumb buffer
-	struct wlr_drm_dumb_buffer *drm_dumb_buffer =
-		(struct wlr_drm_dumb_buffer *)wlr_buffer;
+	void *data = NULL;
+	uint32_t size = 0;
+	if (!wlr_buffer_get_data_ptr(wlr_buffer, &data, &size)) {
+		wlr_log(WLR_ERROR, "Failed to get buffer data");
+		goto error_buffer;
+	}
+	assert(size != 0);
+	assert(data);
+
+	uint32_t stride = size / wlr_buffer->height;
 
 	buffer->image = pixman_image_create_bits(format, wlr_buffer->width,
-			wlr_buffer->height, drm_dumb_buffer->data,
-			drm_dumb_buffer->stride);
+			wlr_buffer->height, data, stride);
+	assert(buffer->image);
 	if (!buffer->image) {
 		wlr_log(WLR_ERROR, "Failed to allocate pixman image\n");
 		goto error_buffer;
