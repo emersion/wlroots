@@ -28,6 +28,8 @@ struct wlr_buffer_impl {
 		struct wlr_dmabuf_attributes *attribs);
 	bool (*get_shm)(struct wlr_buffer *buffer,
 		struct wlr_shm_attributes *attribs);
+	bool (*get_data_ptr)(struct wlr_buffer *buffer, void **data,
+		size_t *size);
 };
 
 /**
@@ -95,6 +97,14 @@ bool wlr_buffer_get_dmabuf(struct wlr_buffer *buffer,
  */
 bool wlr_buffer_get_shm(struct wlr_buffer *buffer,
 	struct wlr_shm_attributes *attribs);
+/*
+ * Access a pointer to the allocated data from the underlying implementation,
+ * and its size.
+ *
+ * The returned pointer should be pointing to a valid memory location.
+ */
+bool wlr_buffer_get_data_ptr(struct wlr_buffer *buffer, void **data,
+	size_t *size);
 
 /**
  * A client buffer.
