@@ -487,7 +487,8 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_display *display,
 		render_formats = wlr_renderer_get_dmabuf_render_formats(wl->renderer);
 	} else {
 		remote_formats = &wl->shm_formats;
-		render_formats = NULL; // TODO
+		// TODO
+		render_formats = wlr_renderer_get_dmabuf_render_formats(wl->renderer);
 	}
 	if (render_formats == NULL) {
 		wlr_log(WLR_ERROR, "Failed to get available render-capable formats");
