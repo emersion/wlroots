@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
 #include "render/shm_allocator.h"
@@ -15,6 +16,7 @@ static struct wlr_shm_buffer *shm_buffer_from_buffer(
 
 static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
 	struct wlr_shm_buffer *buffer = shm_buffer_from_buffer(wlr_buffer);
+	munmap(buffer->data, buffer->size);
 	close(buffer->shm.fd);
 	free(buffer);
 }
@@ -26,9 +28,18 @@ static bool buffer_get_shm(struct wlr_buffer *wlr_buffer,
 	return true;
 }
 
+static bool buffer_get_data_ptr(struct wlr_buffer *wlr_buffer, void **data,
+		size_t *size) {
+	struct wlr_shm_buffer *buffer = shm_buffer_from_buffer(wlr_buffer);
+	*data = buffer->data;
+	*size = buffer->size;
+	return true;
+}
+
 static const struct wlr_buffer_impl buffer_impl = {
 	.destroy = buffer_destroy,
 	.get_shm = buffer_get_shm,
+	.get_data_ptr = buffer_get_data_ptr,
 };
 
 static struct wlr_buffer *allocator_create_buffer(
@@ -42,8 +53,8 @@ static struct wlr_buffer *allocator_create_buffer(
 
 	// TODO: consider using a single file for multiple buffers
 	int stride = width; // TODO: align
-	size_t size = stride * height;
-	buffer->shm.fd = allocate_shm_file(size);
+	buffer->size = stride * height;
+	buffer->shm.fd = allocate_shm_file(buffer->size);
 	if (buffer->shm.fd < 0) {
 		free(buffer);
 		return NULL;
@@ -54,6 +65,15 @@ static struct wlr_buffer *allocator_create_buffer(
 	buffer->shm.height = height;
 	buffer->shm.stride = stride;
 	buffer->shm.offset = 0;
+
+	buffer->data = mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+		buffer->shm.fd, 0);
+	if (buffer->data == MAP_FAILED) {
+		wlr_log_errno(WLR_ERROR, "mmap failed");
+		close(buffer->shm.fd);
+		free(buffer);
+		return NULL;
+	}
 
 	return &buffer->base;
 }

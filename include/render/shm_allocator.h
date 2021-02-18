@@ -7,6 +7,8 @@
 struct wlr_shm_buffer {
 	struct wlr_buffer base;
 	struct wlr_shm_attributes shm;
+	void *data;
+	size_t size;
 };
 
 struct wlr_shm_allocator {
