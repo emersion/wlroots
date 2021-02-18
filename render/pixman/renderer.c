@@ -128,13 +128,19 @@ static struct wlr_pixman_buffer *create_buffer(
 	buffer->buffer = wlr_buffer;
 	buffer->renderer = renderer;
 
+	uint32_t drm_format;
 	struct wlr_dmabuf_attributes dmabuf = {0};
-	if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+	struct wlr_shm_attributes shm = {0};
+	if (wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+		drm_format = dmabuf.format;
+	} else if (wlr_buffer_get_shm(wlr_buffer, &shm)) {
+		drm_format = shm.format;
+	} else {
 		goto error_buffer;
 	}
 
 	uint32_t format;
-	switch (dmabuf.format) {
+	switch (drm_format) {
 	case DRM_FORMAT_XRGB8888:
 		format = PIXMAN_x8r8g8b8;
 		break;
@@ -142,7 +148,7 @@ static struct wlr_pixman_buffer *create_buffer(
 		format = PIXMAN_a8r8g8b8;
 		break;
 	default:
-		wlr_log(WLR_ERROR, "Unsupported DRM format 0x%x\n", dmabuf.format);
+		wlr_log(WLR_ERROR, "Unsupported DRM format 0x%x\n", drm_format);
 		goto error_buffer;
 	}
 
