@@ -49,6 +49,9 @@ compositors = {
 		'src': 'fullscreen-shell.c',
 		'proto': ['fullscreen-shell-unstable-v1'],
 	},
+	'matrix': {
+		'src': 'matrix.c',
+	},
 }
 
 clients = {
@@ -193,7 +196,7 @@ foreach name, info : compositors
 	executable(
 		name,
 		[info.get('src'), extra_src],
-		dependencies: [wlroots, libdrm],
+		dependencies: [wlroots, libdrm, pixman],
 		include_directories: [wlr_inc, proto_inc],
 		build_by_default: get_option('examples'),
 	)
