@@ -9,33 +9,60 @@ static void print_pixman_f_transform(const struct pixman_f_transform *tr) {
 	printf("%f %f %f\n", tr->m[2][0], tr->m[2][1], tr->m[2][2]);
 }
 
-static void print_wlr_matrix(float m[static 9]) {
+static void print_wlr_matrix(const float m[static 9]) {
 	printf("%f %f %f\n", m[0], m[1], m[2]);
 	printf("%f %f %f\n", m[3], m[4], m[5]);
 	printf("%f %f %f\n", m[6], m[7], m[8]);
 }
 
+static void matrix_to_pixman_f_transform(struct pixman_f_transform *ftr,
+		const float mat[static 9]) {
+	ftr->m[0][0] = mat[0];
+	ftr->m[0][1] = mat[1];
+	ftr->m[0][2] = mat[2];
+	ftr->m[1][0] = mat[3];
+	ftr->m[1][1] = mat[4];
+	ftr->m[1][2] = mat[5];
+	ftr->m[2][0] = mat[6];
+	ftr->m[2][1] = mat[7];
+	ftr->m[2][2] = mat[8];
+}
+
 int main(void) {
-	/*struct pixman_f_transform ftr;
-	pixman_f_transform_init_identity(&ftr);
-	pixman_f_transform_translate(&ftr, NULL, 10, 10);*/
+#if 0
+	float rotate_rad = 3.14159 / 2;
 
 	float mat[9];
 	wlr_matrix_identity(mat);
-	wlr_matrix_translate(mat, 10, 10);
+	wlr_matrix_rotate(mat, rotate_rad);
+
 	printf("wlroots:\n");
 	print_wlr_matrix(mat);
 
 	struct pixman_f_transform ftr;
-	ftr.m[0][0] = mat[0];
-	ftr.m[0][1] = mat[1];
-	ftr.m[0][2] = mat[2];
-	ftr.m[1][0] = mat[3];
-	ftr.m[1][1] = mat[4];
-	ftr.m[1][2] = mat[5];
-	ftr.m[2][0] = mat[6];
-	ftr.m[2][1] = mat[7];
-	ftr.m[2][2] = mat[8];
+	pixman_f_transform_init_identity(&ftr);
+	pixman_f_transform_rotate(&ftr, NULL, cos(rotate_rad), sin(rotate_rad));
+
+	printf("pixman:\n");
+	print_pixman_f_transform(&ftr);
+#endif
+
+	float proj[9]; // wlr_output projection matrix, computed in output_update_matrix
+	wlr_matrix_identity(proj);
+	wlr_matrix_translate(proj, 256 / 2, 256 / 2);
+	wlr_matrix_transform(proj, WL_OUTPUT_TRANSFORM_90);
+	wlr_matrix_translate(proj, - 256 / 2, - 256 / 2);
+
+	float mat[9];
+	struct wlr_box box = { .x = 10, .y = 10, .width = 100, .height = 100 };
+	wlr_matrix_project_box(mat, &box, WL_OUTPUT_TRANSFORM_NORMAL, 0, proj);
+
+	printf("wlroots:\n");
+	print_wlr_matrix(mat);
+
+	struct pixman_f_transform ftr;
+	wlr_matrix_scale(mat, 1.0 / 100, 1.0 / 100); // undo the project_box scaling for pixman
+	matrix_to_pixman_f_transform(&ftr, mat);
 
 	printf("pixman:\n");
 	print_pixman_f_transform(&ftr);
