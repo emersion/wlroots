@@ -1,3 +1,5 @@
+libinput = dependency('libinput', version: '>=1.14.0')
+
 wlr_files += files(
 	'backend.c',
 	'events.c',
@@ -8,3 +10,6 @@ wlr_files += files(
 	'tablet_tool.c',
 	'touch.c',
 )
+
+features += {'libinput-backend': true}
+wlr_deps += libinput

@@ -1,11 +1,13 @@
 wlr_files += files('backend.c')
 
-subdir('drm')
-subdir('headless')
-subdir('libinput')
+backends = get_option('backends')
+
+foreach backend : ['drm', 'noop', 'headless', 'libinput', 'x11', 'wayland']
+  if backend in backends or 'auto' in backends
+    subdir(backend)
+  endif
+endforeach
+
 subdir('multi')
-subdir('noop')
-subdir('wayland')
-subdir('x11')
 
 subdir('session')

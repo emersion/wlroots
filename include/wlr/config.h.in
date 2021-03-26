@@ -16,4 +16,7 @@
 
 #mesondefine WLR_HAS_XDG_FOREIGN
 
+#mesondefine WLR_HAS_DRM_BACKEND
+#mesondefine WLR_HAS_LIBINPUT_BACKEND
+
 #endif

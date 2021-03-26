@@ -10,6 +10,7 @@
 #include <wlr/util/log.h>
 #include <xf86drm.h>
 #include "backend/headless.h"
+#include "render/allocator.h"
 #include "render/drm_format_set.h"
 #include "render/gbm_allocator.h"
 #include "render/wlr_renderer.h"
