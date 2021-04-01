@@ -21,5 +21,11 @@ bool wlr_renderer_bind_buffer(struct wlr_renderer *r, struct wlr_buffer *buffer)
  */
 const struct wlr_drm_format_set *wlr_renderer_get_dmabuf_render_formats(
 	struct wlr_renderer *renderer);
+/**
+ * Get the shared memory formats supporting rendering usage. Buffers allocated
+ * with a format from this list may be attached via wlr_renderer_bind_buffer.
+ */
+const struct wlr_drm_format_set *wlr_renderer_get_shm_render_formats(
+	struct wlr_renderer *renderer);
 
 #endif

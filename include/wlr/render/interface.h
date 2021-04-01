@@ -32,6 +32,8 @@ struct wlr_renderer_impl {
 		const float color[static 4], const float matrix[static 9]);
 	const uint32_t *(*get_shm_texture_formats)(struct wlr_renderer *renderer,
 		size_t *len);
+	const struct wlr_drm_format_set *(*get_shm_render_formats)(
+		struct wlr_renderer *renderer);
 	bool (*resource_is_wl_drm_buffer)(struct wlr_renderer *renderer,
 		struct wl_resource *resource);
 	void (*wl_drm_buffer_get_size)(struct wlr_renderer *renderer,

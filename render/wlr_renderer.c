@@ -137,6 +137,14 @@ const uint32_t *wlr_renderer_get_shm_texture_formats(struct wlr_renderer *r,
 	return r->impl->get_shm_texture_formats(r, len);
 }
 
+const struct wlr_drm_format_set *wlr_renderer_get_shm_render_formats(
+		struct wlr_renderer *r) {
+	if (!r->impl->get_shm_render_formats) {
+		return NULL;
+	}
+	return r->impl->get_shm_render_formats(r);
+}
+
 bool wlr_renderer_resource_is_wl_drm_buffer(struct wlr_renderer *r,
 		struct wl_resource *resource) {
 	if (!r->impl->resource_is_wl_drm_buffer) {
