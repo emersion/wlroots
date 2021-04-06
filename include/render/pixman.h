@@ -18,7 +18,7 @@ struct wlr_pixman_renderer {
 	struct wl_list buffers; // wlr_pixman_buffer.link
 
 	struct wlr_pixman_buffer *current_buffer;
-	int32_t viewport_width, viewport_height;
+	int32_t width, height;
 
 	struct wlr_drm_format_set drm_formats;
 };

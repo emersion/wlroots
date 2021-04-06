@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <wayland-server.h>
 #include <wlr/render/interface.h>
+#include <wlr/types/wlr_matrix.h>
 #include <wlr/util/log.h>
 
 #include "types/wlr_buffer.h"
@@ -216,8 +217,8 @@ error_buffer:
 static void pixman_begin(struct wlr_renderer *wlr_renderer, uint32_t width,
 		uint32_t height) {
 	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
-	renderer->viewport_width = width;
-	renderer->viewport_height = height;
+	renderer->width = width;
+	renderer->height = height;
 }
 
 static void pixman_clear(struct wlr_renderer *wlr_renderer,
@@ -235,7 +236,7 @@ static void pixman_clear(struct wlr_renderer *wlr_renderer,
 	pixman_image_t *fill = pixman_image_create_solid_fill(&colour);
 
 	pixman_image_composite32(PIXMAN_OP_SRC, fill, NULL, buffer->image, 0, 0, 0,
-			0, 0, 0, renderer->viewport_width, renderer->viewport_height);
+			0, 0, 0, renderer->width, renderer->height);
 
 	pixman_image_unref(fill);
 }
@@ -245,11 +246,26 @@ static void pixman_scissor(struct wlr_renderer *wlr_renderer,
 	wlr_log(WLR_ERROR, "todo pixman_scissor");
 }
 
+static void matrix_to_pixman_transform(struct pixman_transform *transform,
+		const float mat[static 9]) {
+	struct pixman_f_transform ftr;
+	ftr.m[0][0] = mat[0];
+	ftr.m[0][1] = mat[1];
+	ftr.m[0][2] = mat[2];
+	ftr.m[1][0] = mat[3];
+	ftr.m[1][1] = mat[4];
+	ftr.m[1][2] = mat[5];
+	ftr.m[2][0] = mat[6];
+	ftr.m[2][1] = mat[7];
+	ftr.m[2][2] = mat[8];
+
+	pixman_transform_from_pixman_f_transform(transform, &ftr);
+}
+
 static bool pixman_render_subtexture_with_matrix(
 		struct wlr_renderer *wlr_renderer, struct wlr_texture *wlr_texture,
 		const struct wlr_fbox *fbox, const float matrix[static 9],
 		float alpha) {
-	wlr_log(WLR_INFO, "Subtexture with matrix");
 	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
 	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
 	struct wlr_pixman_buffer *buffer = renderer->current_buffer;
@@ -258,15 +274,16 @@ static bool pixman_render_subtexture_with_matrix(
 	mask_colour.alpha = 0xFFFF * alpha;
 	pixman_image_t *mask = pixman_image_create_solid_fill(&mask_colour);
 
-	struct wlr_box box = {
-		.x = pixman_double_to_fixed(fbox->x),
-		.y = pixman_double_to_fixed(fbox->y),
-		.width = pixman_double_to_fixed(fbox->width),
-		.height = pixman_double_to_fixed(fbox->height),
-	};
+	struct pixman_transform transform = {0};
+
+	wlr_matrix_scale((float*)matrix, 1.0 / fbox->width, 1.0 / fbox->height);
+	matrix_to_pixman_transform(&transform, matrix);
+	pixman_transform_invert(&transform, &transform);
+
+	pixman_image_set_transform(texture->image, &transform);
 
 	pixman_image_composite32(PIXMAN_OP_OVER, texture->image, mask, buffer->image,
-			0, 0, 0, 0, box.x, box.y, box.width, box.height);
+			0, 0, 0, 0, 0, 0, renderer->width, renderer->height);
 
 	return true;
 }
