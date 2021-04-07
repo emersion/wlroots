@@ -1004,7 +1004,8 @@ static void output_cursor_update_visible(struct wlr_output_cursor *cursor) {
 	cursor->visible = visible;
 }
 
-static struct wlr_drm_format *output_pick_cursor_format(struct wlr_output *output) {
+static struct wlr_drm_format *output_pick_format(struct wlr_output *output,
+		const struct wlr_drm_format_set *display_formats) {
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(output->backend);
 	if (renderer == NULL) {
 		wlr_log(WLR_ERROR, "Failed to get backend renderer");
@@ -1018,18 +1019,6 @@ static struct wlr_drm_format *output_pick_cursor_format(struct wlr_output *outpu
 		return NULL;
 	}
 
-	const struct wlr_drm_format_set *display_formats;
-	if (output->impl->get_dmabuf_cursor_formats) {
-		display_formats = output->impl->get_dmabuf_cursor_formats(output);
-		if (display_formats == NULL) {
-			wlr_log(WLR_ERROR, "Failed to get display formats");
-			return NULL;
-		}
-	} else {
-		// The backend can display any format
-		display_formats = render_formats;
-	}
-
 	uint32_t fmt = DRM_FORMAT_ARGB8888;
 
 	const struct wlr_drm_format *render_format =
@@ -1039,11 +1028,16 @@ static struct wlr_drm_format *output_pick_cursor_format(struct wlr_output *outpu
 		return NULL;
 	}
 
-	const struct wlr_drm_format *display_format =
-		wlr_drm_format_set_get(display_formats, fmt);
-	if (display_format == NULL) {
-		wlr_log(WLR_DEBUG, "Output doesn't support format 0x%"PRIX32, fmt);
-		return NULL;
+	const struct wlr_drm_format *display_format;
+	if (display_formats != NULL) {
+		display_format = wlr_drm_format_set_get(display_formats, fmt);
+		if (display_format == NULL) {
+			wlr_log(WLR_DEBUG, "Output doesn't support format 0x%"PRIX32, fmt);
+			return NULL;
+		}
+	} else {
+		// The output can display any format
+		display_format = render_format;
 	}
 
 	struct wlr_drm_format *format =
@@ -1055,6 +1049,19 @@ static struct wlr_drm_format *output_pick_cursor_format(struct wlr_output *outpu
 	}
 
 	return format;
+}
+
+static struct wlr_drm_format *output_pick_cursor_format(struct wlr_output *output) {
+	const struct wlr_drm_format_set *display_formats = NULL;
+	if (output->impl->get_dmabuf_cursor_formats) {
+		display_formats = output->impl->get_dmabuf_cursor_formats(output);
+		if (display_formats == NULL) {
+			wlr_log(WLR_ERROR, "Failed to get cursor display formats");
+			return NULL;
+		}
+	}
+
+	return output_pick_format(output, display_formats);
 }
 
 static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor) {
