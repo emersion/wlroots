@@ -100,7 +100,7 @@ static bool output_set_custom_mode(struct wlr_output *wlr_output,
 
 	if (wlr_output->width != width || wlr_output->height != height) {
 		struct wlr_swapchain *swapchain = wlr_swapchain_create(
-			output->backend->allocator, width, height, output->backend->format);
+			output->backend->alloc, width, height, output->backend->format);
 		if (swapchain == NULL) {
 			return false;
 		}
@@ -409,7 +409,7 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 				output->cursor.swapchain->height != height) {
 			wlr_swapchain_destroy(output->cursor.swapchain);
 			output->cursor.swapchain = wlr_swapchain_create(
-				output->backend->allocator, width, height,
+				output->backend->alloc, width, height,
 				output->backend->format);
 			if (output->cursor.swapchain == NULL) {
 				return false;
@@ -652,7 +652,7 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 			&xdg_toplevel_listener, output);
 	wl_surface_commit(output->surface);
 
-	output->swapchain = wlr_swapchain_create(output->backend->allocator,
+	output->swapchain = wlr_swapchain_create(output->backend->alloc,
 		wlr_output->width, wlr_output->height, output->backend->format);
 	if (output->swapchain == NULL) {
 		goto error;
