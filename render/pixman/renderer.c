@@ -300,8 +300,7 @@ static void pixman_render_ellipse_with_matrix(struct wlr_renderer *wlr_renderer,
 
 static const uint32_t *pixman_get_shm_texture_formats(
 		struct wlr_renderer *wlr_renderer, size_t *len) {
-	wlr_log(WLR_ERROR, "todo pixman_get_shm_texture_formats");
-	return 0;
+	return get_pixman_drm_formats(len);
 }
 
 static const struct wlr_drm_format_set *pixman_get_shm_render_formats(
