@@ -1,4 +1,5 @@
 #include <drm_fourcc.h>
+#include <wlr/util/log.h>
 
 #include "render/pixman.h"
 
@@ -37,14 +38,15 @@ static const struct wlr_pixman_pixel_format formats[] = {
 	}
 };
 
-const struct wlr_pixman_pixel_format *get_pixman_format_from_drm(
-		uint32_t fmt) {
+pixman_format_code_t get_pixman_format_from_drm(uint32_t fmt) {
 	for (size_t i = 0; i < sizeof(formats) / sizeof(*formats); ++i) {
 		if (formats[i].drm_format == fmt) {
-			return &formats[i];
+			return formats[i].pixman_format;
 		}
 	}
-	return NULL;
+
+	wlr_log(WLR_ERROR, "DRM format 0x%"PRIX32" has no pixman equivalent", fmt);
+	return 0;
 }
 
 const uint32_t *get_pixman_drm_formats(size_t *len) {

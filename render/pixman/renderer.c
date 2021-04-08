@@ -40,42 +40,7 @@ static struct wlr_pixman_texture *get_texture(
 
 static bool texture_is_opaque(struct wlr_texture *wlr_texture) {
 	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
-	wlr_log(WLR_INFO, "texture_is_opaque");
-
-#if WLR_BIG_ENDIAN
-	return texture->format == PIXMAN_b8g8r8x8;
-#else
-	return texture->format == PIXMAN_x8r8g8b8;
-#endif
-}
-
-static bool texture_write_pixels(struct wlr_texture *wlr_texture,
-		uint32_t stride, uint32_t width, uint32_t height,
-		uint32_t src_x, uint32_t src_y, uint32_t dst_x, uint32_t dst_y,
-		const void *data) {
-	wlr_log(WLR_INFO, "texture_write_pixels");
-
-	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
-
-	wlr_log(WLR_INFO, "tex is w %zu h %zu", (size_t)wlr_texture->width,
-			(size_t)wlr_texture->height);
-
-	wlr_log(WLR_INFO, "stride is %zu", (size_t)stride);
-
-	wlr_log(WLR_INFO, "src_x %zu src_y %zu", (size_t)src_x, (size_t)src_y);
-
-	uint32_t *start = (uint32_t*)data + (src_y * stride) + (src_x * 4);
-	assert(start);
-
-	pixman_image_t *pixels = pixman_image_create_bits_no_clear(texture->format,
-			width, height, start, stride);
-
-	pixman_image_composite32(PIXMAN_OP_OVER, texture->image, NULL, pixels,
-			dst_x, dst_y, 0, 0, 0, 0, width, height);
-
-	pixman_image_unref(pixels);
-
-	return true;
+	return texture->format->has_alpha;
 }
 
 static bool texture_to_dmabuf(struct wlr_texture *wlr_texture,
@@ -96,42 +61,9 @@ static void texture_destroy(struct wlr_texture *wlr_texture) {
 
 static const struct wlr_texture_impl texture_impl = {
 	.is_opaque = texture_is_opaque,
-	.write_pixels = texture_write_pixels,
 	.to_dmabuf = texture_to_dmabuf,
 	.destroy = texture_destroy,
 };
-
-static uint32_t get_pixman_format_from_wl(enum wl_shm_format wl_fmt) {
-	uint32_t fmt = 0;
-	switch (wl_fmt) {
-	case WL_SHM_FORMAT_ARGB8888:
-#if WLR_BIG_ENDIAN
-		fmt = PIXMAN_b8g8r8a8;
-#else
-		fmt = PIXMAN_a8r8g8b8;
-#endif
-		break;
-	case WL_SHM_FORMAT_XRGB8888:
-#if WLR_BIG_ENDIAN
-		fmt = PIXMAN_b8g8r8x8;
-#else
-		fmt = PIXMAN_x8r8g8b8;
-#endif
-		break;
-	case WL_SHM_FORMAT_ABGR8888:
-#if WLR_BIG_ENDIAN
-		fmt = PIXMAN_r8g8b8a8;
-#else
-		fmt = PIXMAN_a8b8g8r8;
-#endif
-		break;
-	default:
-		wlr_log(WLR_ERROR, "Unsupported wl_shm_format 0x%"PRIX32, wl_fmt);
-		break;
-	}
-
-	return fmt;
-}
 
 struct wlr_pixman_texture *pixman_create_texture(
 		struct wlr_texture *wlr_texture, struct wlr_pixman_renderer *renderer);
@@ -168,18 +100,7 @@ static struct wlr_pixman_buffer *create_buffer(
 		goto error_buffer;
 	}
 
-	uint32_t format;
-	switch (drm_format) {
-	case DRM_FORMAT_XRGB8888:
-		format = PIXMAN_x8r8g8b8;
-		break;
-	case DRM_FORMAT_ARGB8888:
-		format = PIXMAN_a8r8g8b8;
-		break;
-	default:
-		wlr_log(WLR_ERROR, "Unsupported DRM format 0x%x\n", drm_format);
-		goto error_buffer;
-	}
+	uint32_t format = get_pixman_format_from_drm(drm_format);
 
 	void *data = NULL;
 	size_t stride;
@@ -282,8 +203,9 @@ static bool pixman_render_subtexture_with_matrix(
 
 	pixman_image_set_transform(texture->image, &transform);
 
-	pixman_image_composite32(PIXMAN_OP_OVER, texture->image, mask, buffer->image,
-			0, 0, 0, 0, 0, 0, renderer->width, renderer->height);
+	pixman_image_composite32(PIXMAN_OP_OVER, texture->image, mask,
+			buffer->image, 0, 0, 0, 0, 0, 0, renderer->width,
+			renderer->height);
 
 	return true;
 }
@@ -310,10 +232,8 @@ static const struct wlr_drm_format_set *pixman_get_shm_render_formats(
 }
 
 static struct wlr_texture *pixman_texture_from_pixels(
-		struct wlr_renderer *wlr_renderer, enum wl_shm_format wl_fmt,
+		struct wlr_renderer *wlr_renderer, uint32_t drm_format,
 		uint32_t stride, uint32_t width, uint32_t height, const void *data) {
-	wlr_log(WLR_INFO, "Pixman texture from pixels");
-
 	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);
 	struct wlr_pixman_texture *texture =
 		calloc(1, sizeof(struct wlr_pixman_texture));
@@ -324,8 +244,13 @@ static struct wlr_texture *pixman_texture_from_pixels(
 
 	wlr_texture_init(&texture->wlr_texture, &texture_impl, width, height);
 	texture->renderer = renderer;
-	texture->format = get_pixman_format_from_wl(wl_fmt);
-	texture->image = pixman_image_create_bits_no_clear(texture->format,
+
+	texture->format = drm_get_pixel_format_info(drm_format);
+	assert(texture->format);
+	texture->pixman_format = get_pixman_format_from_drm(
+			texture->format->drm_format);
+
+	texture->image = pixman_image_create_bits_no_clear(texture->pixman_format,
 			width, height, (void*)data, stride);
 
 	if (!texture->image) {
@@ -403,7 +328,5 @@ struct wlr_renderer *wlr_pixman_renderer_create(void) {
 				DRM_FORMAT_MOD_LINEAR);
 	}
 
-
 	return &renderer->wlr_renderer;
 }
-
