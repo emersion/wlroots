@@ -93,8 +93,6 @@ features = {
 wayland_server = dependency('wayland-server', version: '>=1.19')
 wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols', version: '>=1.17')
-egl = dependency('egl')
-glesv2 = dependency('glesv2')
 drm = dependency('libdrm', version: '>=2.4.95')
 gbm = dependency('gbm', version: '>=17.1.0')
 libinput = dependency('libinput', version: '>=1.14.0')
@@ -120,8 +118,6 @@ wlr_deps = [
 	wayland_server,
 	wayland_client,
 	wayland_protos,
-	egl,
-	glesv2,
 	drm,
 	gbm,
 	libinput,
