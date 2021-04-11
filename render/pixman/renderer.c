@@ -50,6 +50,7 @@ static void texture_destroy(struct wlr_texture *wlr_texture) {
 	struct wlr_pixman_texture *texture = get_texture(wlr_texture);
 
 	pixman_image_unref(texture->image);
+	free(texture->data);
 	free(texture);
 }
 
@@ -235,14 +236,28 @@ static struct wlr_texture *pixman_texture_from_pixels(
 
 	texture->format = drm_get_pixel_format_info(drm_format);
 	assert(texture->format);
-	texture->pixman_format = get_pixman_format_from_drm(
-			texture->format->drm_format);
+
+	texture->pixman_format = get_pixman_format_from_drm(drm_format);
+	if (texture->pixman_format == 0) {
+		wlr_log(WLR_ERROR, "Unsupported pixel format 0x%"PRIX32, drm_format);
+		free(texture);
+		return NULL;
+	}
+
+	// TODO: avoid this copy
+	texture->data = malloc(stride * height);
+	if (texture->data == NULL) {
+		wlr_log_errno(WLR_ERROR, "Allocation failed");
+		free(texture);
+		return NULL;
+	}
+	memcpy(texture->data, data, stride * height);
 
 	texture->image = pixman_image_create_bits_no_clear(texture->pixman_format,
-			width, height, (void*)data, stride);
-
+			width, height, texture->data, stride);
 	if (!texture->image) {
 		wlr_log(WLR_ERROR, "Failed to create pixman image");
+		free(texture->data);
 		free(texture);
 		return NULL;
 	}

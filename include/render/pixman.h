@@ -38,6 +38,7 @@ struct wlr_pixman_texture {
 	struct wlr_texture wlr_texture;
 	struct wlr_pixman_renderer *renderer;
 
+	void *data;
 	pixman_image_t *image;
 	const struct wlr_pixel_format_info *format;
 	pixman_format_code_t pixman_format;
