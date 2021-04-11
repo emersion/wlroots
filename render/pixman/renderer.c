@@ -43,12 +43,6 @@ static bool texture_is_opaque(struct wlr_texture *wlr_texture) {
 	return texture->format->has_alpha;
 }
 
-static bool texture_to_dmabuf(struct wlr_texture *wlr_texture,
-		struct wlr_dmabuf_attributes *attribs) {
-	wlr_log(WLR_ERROR, "todo texture_to_dmabuf");
-	return false;
-}
-
 static void texture_destroy(struct wlr_texture *wlr_texture) {
 	if (wlr_texture == NULL) {
 		return;
@@ -61,7 +55,6 @@ static void texture_destroy(struct wlr_texture *wlr_texture) {
 
 static const struct wlr_texture_impl texture_impl = {
 	.is_opaque = texture_is_opaque,
-	.to_dmabuf = texture_to_dmabuf,
 	.destroy = texture_destroy,
 };
 
@@ -215,11 +208,6 @@ static void pixman_render_quad_with_matrix(struct wlr_renderer *wlr_renderer,
 	wlr_log(WLR_ERROR, "todo pixman_render_quad_with_matrix");
 }
 
-static void pixman_render_ellipse_with_matrix(struct wlr_renderer *wlr_renderer,
-		const float color[static 4], const float matrix[static 9]) {
-	wlr_log(WLR_ERROR, "todo pixman_render_ellipse_with_matrix");
-}
-
 static const uint32_t *pixman_get_shm_texture_formats(
 		struct wlr_renderer *wlr_renderer, size_t *len) {
 	return get_pixman_drm_formats(len);
@@ -301,7 +289,6 @@ static const struct wlr_renderer_impl renderer_impl = {
 	.scissor = pixman_scissor,
 	.render_subtexture_with_matrix = pixman_render_subtexture_with_matrix,
 	.render_quad_with_matrix = pixman_render_quad_with_matrix,
-	.render_ellipse_with_matrix = pixman_render_ellipse_with_matrix,
 	.get_shm_texture_formats = pixman_get_shm_texture_formats,
 	.get_shm_render_formats = pixman_get_shm_render_formats,
 	.texture_from_pixels = pixman_texture_from_pixels,
