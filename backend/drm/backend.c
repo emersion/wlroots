@@ -94,6 +94,11 @@ static uint32_t backend_get_buffer_caps(struct wlr_backend *backend) {
 	return WLR_BUFFER_CAP_DMABUF;
 }
 
+static struct wlr_session *backend_get_session(struct wlr_backend *backend) {
+	struct wlr_drm_backend *drm = get_drm_backend_from_backend(backend);
+	return drm->session;
+}
+
 static const struct wlr_backend_impl backend_impl = {
 	.start = backend_start,
 	.destroy = backend_destroy,
@@ -101,6 +106,7 @@ static const struct wlr_backend_impl backend_impl = {
 	.get_presentation_clock = backend_get_presentation_clock,
 	.get_drm_fd = backend_get_drm_fd,
 	.get_buffer_caps = backend_get_buffer_caps,
+	.get_session = backend_get_session,
 };
 
 bool wlr_backend_is_drm(struct wlr_backend *b) {
