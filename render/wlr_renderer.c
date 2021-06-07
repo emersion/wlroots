@@ -4,6 +4,7 @@
 #include <wlr/render/interface.h>
 #include <wlr/render/pixman.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/util/log.h>
 
@@ -239,6 +240,12 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
 		}
 	}
 	assert(argb8888 && xrgb8888);
+
+	if (wlr_renderer_get_dmabuf_texture_formats(r) != NULL) {
+		if (wlr_linux_dmabuf_v1_create(wl_display, r) == NULL) {
+			return false;
+		}
+	}
 
 	if (r->impl->init_wl_display) {
 		if (!r->impl->init_wl_display(r, wl_display)) {
