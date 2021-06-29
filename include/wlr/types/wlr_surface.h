@@ -152,6 +152,8 @@ struct wlr_surface {
 
 	struct wl_listener renderer_destroy;
 
+	bool has_pending_attach_offset;
+
 	void *data;
 };
 
