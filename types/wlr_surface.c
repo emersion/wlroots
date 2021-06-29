@@ -69,7 +69,8 @@ static void surface_attach(struct wl_client *client,
 		struct wl_resource *buffer, int32_t dx, int32_t dy) {
 	struct wlr_surface *surface = wlr_surface_from_resource(resource);
 
-	surface->pending.committed |= WLR_SURFACE_STATE_BUFFER;
+	surface->pending.committed |=
+		WLR_SURFACE_STATE_BUFFER | WLR_SURFACE_STATE_OFFSET;
 	surface->pending.dx = dx;
 	surface->pending.dy = dy;
 	surface_state_set_buffer(&surface->pending, buffer);
@@ -268,7 +269,7 @@ static void surface_state_copy(struct wlr_surface_state *state,
 	if (next->committed & WLR_SURFACE_STATE_TRANSFORM) {
 		state->transform = next->transform;
 	}
-	if (next->committed & WLR_SURFACE_STATE_BUFFER) {
+	if (next->committed & WLR_SURFACE_STATE_OFFSET) {
 		state->dx = next->dx;
 		state->dy = next->dy;
 	} else {
@@ -309,6 +310,8 @@ static void surface_state_move(struct wlr_surface_state *state,
 	if (next->committed & WLR_SURFACE_STATE_BUFFER) {
 		surface_state_set_buffer(state, next->buffer_resource);
 		surface_state_reset_buffer(next);
+	}
+	if (next->committed & WLR_SURFACE_STATE_OFFSET) {
 		next->dx = next->dy = 0;
 	}
 	if (next->committed & WLR_SURFACE_STATE_SURFACE_DAMAGE) {
