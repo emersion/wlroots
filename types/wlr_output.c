@@ -477,12 +477,14 @@ static struct wlr_drm_format *output_pick_format(struct wlr_output *output,
 static void output_pending_resolution(struct wlr_output *output, int *width,
 		int *height);
 
-static bool output_create_swapchain(struct wlr_output *output) {
+static bool output_create_swapchain(struct wlr_output *output,
+		bool allow_modifiers) {
 	int width, height;
 	output_pending_resolution(output, &width, &height);
 
 	if (output->swapchain != NULL && output->swapchain->width == width &&
-			output->swapchain->height == height) {
+			output->swapchain->height == height &&
+			(allow_modifiers || output->swapchain->format->len == 0)) {
 		return true;
 	}
 
@@ -511,6 +513,10 @@ static bool output_create_swapchain(struct wlr_output *output) {
 	wlr_log(WLR_DEBUG, "Choosing primary buffer format 0x%"PRIX32" for output '%s'",
 		format->format, output->name);
 
+	if (!allow_modifiers) {
+		format->len = 0;
+	}
+
 	struct wlr_swapchain *swapchain =
 		wlr_swapchain_create(allocator, width, height, format);
 	free(format);
@@ -529,7 +535,7 @@ static bool output_attach_back_buffer(struct wlr_output *output,
 		int *buffer_age) {
 	assert(output->back_buffer == NULL);
 
-	if (!output_create_swapchain(output)) {
+	if (!output_create_swapchain(output, true)) {
 		return false;
 	}
 
@@ -691,7 +697,31 @@ static bool output_ensure_buffer(struct wlr_output *output) {
 		output_clear_back_buffer(output);
 		return false;
 	}
+	if (!output->impl->test || output->impl->test(output)) {
+		return true;
+	}
 
+	output_clear_back_buffer(output);
+
+	if (output->swapchain->format->len == 0) {
+		return false;
+	}
+
+	// The test failed for a buffer which has modifiers, try disabling
+	// modifiers to see if that makes a difference.
+	wlr_log(WLR_DEBUG, "Output modeset test failed, retrying without modifiers");
+
+	if (!output_create_swapchain(output, false)) {
+		return false;
+	}
+	if (!output_attach_empty_buffer(output)) {
+		output_clear_back_buffer(output);
+		return false;
+	}
+	if (!output->impl->test(output)) {
+		output_clear_back_buffer(output);
+		return false;
+	}
 	return true;
 }
 
