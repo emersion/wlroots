@@ -55,8 +55,13 @@ static void backend_destroy(struct wlr_backend *backend) {
 	wl_list_remove(&drm->dev_change.link);
 	wl_list_remove(&drm->dev_remove.link);
 
+	gbm_device_destroy(drm->gbm);
+
+	if (drm->parent) {
+		finish_drm_renderer(&drm->mgpu_renderer);
+	}
+
 	finish_drm_resources(drm);
-	finish_drm_renderer(&drm->renderer);
 
 	free(drm->name);
 	wlr_session_close_file(drm->session, drm->dev);
@@ -221,8 +226,9 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 		goto error_event;
 	}
 
-	if (!init_drm_renderer(drm, &drm->renderer)) {
-		wlr_log(WLR_ERROR, "Failed to initialize renderer");
+	drm->gbm = gbm_create_device(drm->fd);
+	if (!drm->gbm) {
+		wlr_log(WLR_ERROR, "Failed to create GBM device");
 		goto error_event;
 	}
 
@@ -233,9 +239,14 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 	}
 
 	if (drm->parent) {
+		if (!init_drm_renderer(drm, &drm->mgpu_renderer)) {
+			wlr_log(WLR_ERROR, "Failed to initialize renderer");
+			goto error_event;
+		}
+
 		// We'll perform a multi-GPU copy for all submitted buffers, we need
 		// to be able to texture from them
-		struct wlr_renderer *renderer = drm->renderer.wlr_rend;
+		struct wlr_renderer *renderer = drm->mgpu_renderer.wlr_rend;
 		const struct wlr_drm_format_set *texture_formats =
 			wlr_renderer_get_dmabuf_texture_formats(renderer);
 		if (texture_formats == NULL) {
